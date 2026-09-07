@@ -9,9 +9,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import si.lukabencina.kilometrina.KilometrinaApplication
+import si.lukabencina.kilometrina.location.DrivingDetectionManager
 
 private const val MAX_BACKUP_BYTES = 64 * 1024 * 1024
 
@@ -53,11 +55,13 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             runCatching {
                 withContext(Dispatchers.IO) {
                     val raw = readLimited(uri)
-                    repository.restoreBackupJson(raw)
+                    val summary = repository.restoreBackupJson(raw)
+                    syncDriveDetectionAfterRestore()
+                    summary
                 }
             }.onSuccess { summary ->
                 mutableState.value = BackupUiState(
-                    message = "Obnovljeno: ${summary.tripCount} voženj, ${summary.savedPlaceCount} lokacij in ${summary.pointCount} GPS točk.",
+                    message = "Obnovljeno: ${summary.tripCount} voženj, ${summary.savedPlaceCount} lokacij, ${summary.vehicleCount} vozil in ${summary.pointCount} GPS točk.",
                 )
             }.onFailure {
                 mutableState.value = BackupUiState(message = it.message ?: "Obnovitev ni uspela.", isError = true)
@@ -67,6 +71,20 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearMessage() {
         mutableState.value = mutableState.value.copy(message = null, isError = false)
+    }
+
+    private suspend fun syncDriveDetectionAfterRestore() {
+        val enabled = app.settingsRepository.settings.first().autoDetectionEnabled
+        if (!enabled) {
+            DrivingDetectionManager.disable(getApplication())
+            return
+        }
+        if (!DrivingDetectionManager.hasPermission(getApplication())) {
+            app.settingsRepository.setAutoDetectionEnabled(false)
+            return
+        }
+        val registered = runCatching { DrivingDetectionManager.enable(getApplication()) }.isSuccess
+        if (!registered) app.settingsRepository.setAutoDetectionEnabled(false)
     }
 
     private fun readLimited(uri: Uri): String {

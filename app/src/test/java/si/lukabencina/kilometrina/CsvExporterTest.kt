@@ -7,7 +7,7 @@ import si.lukabencina.kilometrina.ui.CsvExporter
 
 class CsvExporterTest {
     @Test
-    fun csvContainsTripAndCalculation() {
+    fun csvContainsTripAndAllCosts() {
         val trip = TripEntity(
             id = 1,
             startTime = 1_700_000_000_000,
@@ -21,6 +21,8 @@ class CsvExporterTest {
             distanceMeters = 100_000.0,
             purpose = "Obisk stranke",
             ratePerKm = 0.43,
+            parkingCents = 250,
+            tollsCents = 700,
         )
 
         val csv = CsvExporter.build(listOf(trip))
@@ -28,5 +30,11 @@ class CsvExporterTest {
         assertTrue(csv.contains("Obisk stranke"))
         assertTrue(csv.contains("100,00"))
         assertTrue(csv.contains("43,00"))
+        assertTrue(csv.contains("2,50"))
+        assertTrue(csv.contains("7,00"))
+        assertTrue(csv.contains("52,50"))
+        assertTrue(csv.contains("Parkirnina EUR"))
+        assertTrue(csv.contains("Cestnina EUR"))
+        assertTrue(csv.contains("Skupaj EUR"))
     }
 }

@@ -1,6 +1,7 @@
 package si.lukabencina.kilometrina.ui
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -48,15 +49,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import java.util.Locale
 import kotlinx.coroutines.delay
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.location.GpsSignalEvaluator
 import si.lukabencina.kilometrina.location.GpsSignalQuality
 import si.lukabencina.kilometrina.location.SegmentRejectionReason
 import si.lukabencina.kilometrina.location.TrackingDiagnosticsState
-import java.util.Locale
 
 private enum class PendingLocationAction {
     Start,
@@ -72,10 +75,12 @@ fun HomeScreen(
     onFinishRecovered: () -> Unit,
     onOpenTrips: () -> Unit,
 ) {
+    val context = LocalContext.current
     var purpose by rememberSaveable { mutableStateOf("") }
     var lastAppliedDefaultPurpose by rememberSaveable { mutableStateOf("") }
     var startState by remember { mutableStateOf<StartState>(StartState.Idle) }
     var pendingAction by remember { mutableStateOf<PendingLocationAction?>(null) }
+    var pendingDisclosureAction by remember { mutableStateOf<PendingLocationAction?>(null) }
     var showStopDialog by remember { mutableStateOf(false) }
 
     val purposeSuggestions = remember(uiState.savedPlaces, uiState.recentPurposes) {
@@ -97,7 +102,9 @@ fun HomeScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
-        val locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val locationGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                result[Manifest.permission.ACCESS_FINE_LOCATION] == true
         val action = pendingAction
         pendingAction = null
         if (!locationGranted) {
@@ -111,7 +118,7 @@ fun HomeScreen(
         }
     }
 
-    fun requestLocation(action: PendingLocationAction) {
+    fun launchPermissions(action: PendingLocationAction) {
         pendingAction = action
         val permissions = buildList {
             add(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -119,6 +126,18 @@ fun HomeScreen(
             if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
         }.toTypedArray()
         permissionLauncher.launch(permissions)
+    }
+
+    fun requestLocation(action: PendingLocationAction) {
+        val fineGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!fineGranted) {
+            pendingDisclosureAction = action
+        } else {
+            launchPermissions(action)
+        }
     }
 
     Column(
@@ -171,6 +190,31 @@ fun HomeScreen(
         uiState.recentTrip?.let { recent ->
             RecentTripCard(recent, onOpenTrips)
         }
+    }
+
+    pendingDisclosureAction?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingDisclosureAction = null },
+            title = { Text("Lokacija med vožnjo") },
+            text = {
+                Text(
+                    "Kilometrina uporablja natančno lokacijo za merjenje dejansko prevožene poti. Ko začneš vožnjo, lokacijo beleži tudi, ko je zaslon ugasnjen ali aplikacija ni v ospredju. Med sledenjem je vedno prikazano trajno Android obvestilo. GPS podatki ostanejo lokalno na tvoji napravi in se ne uporabljajo za oglase ali analitiko.",
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    pendingDisclosureAction = null
+                    launchPermissions(action)
+                }) {
+                    Text("Nadaljuj")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDisclosureAction = null }) {
+                    Text("Ne zdaj")
+                }
+            },
+        )
     }
 
     if (showStopDialog) {
@@ -496,36 +540,5 @@ private fun Metric(label: String, value: String, modifier: Modifier = Modifier) 
     Column(modifier = modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.65f))
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-private fun RecentTripCard(trip: TripEntity, onOpenTrips: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = MaterialTheme.shapes.extraLarge,
-        onClick = onOpenTrips,
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Zadnja vožnja", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Icon(Icons.Outlined.ArrowForward, contentDescription = "Odpri vožnje")
-            }
-            Text("${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(formatDate(trip.startTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${formatKm(trip.distanceMeters)} • ${formatMoney(tripTotalCost(trip))}", fontWeight = FontWeight.Medium)
-            }
-        }
     }
 }

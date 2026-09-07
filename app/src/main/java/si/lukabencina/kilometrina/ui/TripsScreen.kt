@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripRules
 import java.time.Instant
@@ -67,6 +70,8 @@ private val dateTimeFormatter = DateTimeFormatter.ofPattern("d. M. yyyy • HH:m
 fun TripsScreen(
     trips: List<TripEntity>,
     defaultRatePerKm: Double,
+    savedPlaces: List<SavedPlace>,
+    recentLocations: List<String>,
     onDeleteTrip: (Long) -> Unit,
     onUpdateTrip: (TripEntity) -> Unit,
     onAddManualTrip: (TripEntity) -> Unit,
@@ -213,6 +218,8 @@ fun TripsScreen(
     if (showManualDialog) {
         ManualTripDialog(
             defaultRatePerKm = defaultRatePerKm,
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
             onDismiss = { showManualDialog = false },
             onSave = {
                 onAddManualTrip(it)
@@ -225,6 +232,8 @@ fun TripsScreen(
     editCandidate?.let { trip ->
         EditTripDialog(
             trip = trip,
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
             onDismiss = { editCandidate = null },
             onSave = {
                 onUpdateTrip(it)
@@ -331,6 +340,8 @@ private fun TripRow(trip: TripEntity, onEdit: () -> Unit, onDelete: () -> Unit) 
 @Composable
 private fun ManualTripDialog(
     defaultRatePerKm: Double,
+    savedPlaces: List<SavedPlace>,
+    recentLocations: List<String>,
     onDismiss: () -> Unit,
     onSave: (TripEntity) -> Unit,
 ) {
@@ -357,6 +368,13 @@ private fun ManualTripDialog(
                 onStartAddressChange = { startAddress = it },
                 endAddress = endAddress,
                 onEndAddressChange = { endAddress = it },
+                savedPlaces = savedPlaces,
+                recentLocations = recentLocations,
+                onStartSavedPlace = { startAddress = it.address },
+                onEndSavedPlace = {
+                    endAddress = it.address
+                    if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose
+                },
                 startDateTime = startDateTime,
                 onStartDateTimeChange = { startDateTime = it },
                 endDateTime = endDateTime,
@@ -412,6 +430,8 @@ private fun ManualTripDialog(
 @Composable
 private fun EditTripDialog(
     trip: TripEntity,
+    savedPlaces: List<SavedPlace>,
+    recentLocations: List<String>,
     onDismiss: () -> Unit,
     onSave: (TripEntity) -> Unit,
 ) {
@@ -437,6 +457,13 @@ private fun EditTripDialog(
                 onStartAddressChange = { startAddress = it },
                 endAddress = endAddress,
                 onEndAddressChange = { endAddress = it },
+                savedPlaces = savedPlaces,
+                recentLocations = recentLocations,
+                onStartSavedPlace = { startAddress = it.address },
+                onEndSavedPlace = {
+                    endAddress = it.address
+                    if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose
+                },
                 startDateTime = startDateTime,
                 onStartDateTimeChange = { startDateTime = it },
                 endDateTime = endDateTime,
@@ -495,6 +522,10 @@ private fun TripFormFields(
     onStartAddressChange: (String) -> Unit,
     endAddress: String,
     onEndAddressChange: (String) -> Unit,
+    savedPlaces: List<SavedPlace>,
+    recentLocations: List<String>,
+    onStartSavedPlace: (SavedPlace) -> Unit,
+    onEndSavedPlace: (SavedPlace) -> Unit,
     startDateTime: LocalDateTime,
     onStartDateTimeChange: (LocalDateTime) -> Unit,
     endDateTime: LocalDateTime,
@@ -531,12 +562,24 @@ private fun TripFormFields(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
+        QuickLocationRow(
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
+            onSavedPlace = onStartSavedPlace,
+            onRecentLocation = onStartAddressChange,
+        )
         OutlinedTextField(
             value = endAddress,
             onValueChange = onEndAddressChange,
             label = { Text("Lokacija prihoda") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+        )
+        QuickLocationRow(
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
+            onSavedPlace = onEndSavedPlace,
+            onRecentLocation = onEndAddressChange,
         )
         OutlinedTextField(
             value = distanceKm,
@@ -576,6 +619,35 @@ private fun TripFormFields(
         )
         errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun QuickLocationRow(
+    savedPlaces: List<SavedPlace>,
+    recentLocations: List<String>,
+    onSavedPlace: (SavedPlace) -> Unit,
+    onRecentLocation: (String) -> Unit,
+) {
+    val savedAddresses = remember(savedPlaces) { savedPlaces.map { it.address.trim().lowercase() }.toSet() }
+    val recent = remember(recentLocations, savedAddresses) {
+        recentLocations.filterNot { it.trim().lowercase() in savedAddresses }.take(4)
+    }
+    if (savedPlaces.isEmpty() && recent.isEmpty()) return
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(savedPlaces.take(6), key = { "saved-${it.id}" }) { place ->
+            SuggestionChip(
+                onClick = { onSavedPlace(place) },
+                label = { Text(place.name) },
+            )
+        }
+        items(recent, key = { "recent-$it" }) { address ->
+            SuggestionChip(
+                onClick = { onRecentLocation(address) },
+                label = { Text(shortLocation(address)) },
+            )
         }
     }
 }

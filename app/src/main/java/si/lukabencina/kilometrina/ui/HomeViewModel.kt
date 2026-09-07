@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.data.AppSettings
+import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.location.LocationTrackingService
 
@@ -32,10 +33,31 @@ data class HomeUiState(
     val activeTrip: TripEntity? = null,
     val trips: List<TripEntity> = emptyList(),
     val settings: AppSettings = AppSettings(),
+    val savedPlaces: List<SavedPlace> = emptyList(),
     val recoveryRequired: Boolean = false,
 ) {
     val recentTrip: TripEntity?
         get() = trips.firstOrNull { it.endTime != null }
+
+    val recentLocations: List<String>
+        get() = trips.asSequence()
+            .filter { it.endTime != null }
+            .flatMap { sequenceOf(it.startAddress, it.endAddress) }
+            .filterNotNull()
+            .map(String::trim)
+            .filter { it.isNotBlank() && it != "Lokacija ni na voljo" }
+            .distinct()
+            .take(6)
+            .toList()
+
+    val recentPurposes: List<String>
+        get() = trips.asSequence()
+            .filter { it.endTime != null }
+            .map { it.purpose.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(5)
+            .toList()
 }
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
@@ -44,16 +66,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val fused = LocationServices.getFusedLocationProviderClient(application)
     private val recoveryRequired = MutableStateFlow(false)
 
+    private val preferences = combine(
+        app.settingsRepository.settings,
+        app.savedPlaceRepository.places,
+    ) { settings, savedPlaces -> settings to savedPlaces }
+
     val uiState: StateFlow<HomeUiState> = combine(
         repository.activeTrip,
         repository.trips,
-        app.settingsRepository.settings,
+        preferences,
         recoveryRequired,
-    ) { active, trips, settings, recovery ->
+    ) { active, trips, preferencesValue, recovery ->
         HomeUiState(
             activeTrip = active,
             trips = trips,
-            settings = settings,
+            settings = preferencesValue.first,
+            savedPlaces = preferencesValue.second,
             recoveryRequired = recovery && active != null,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
@@ -127,6 +155,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             app.settingsRepository.setRatePerKm(ratePerKm)
             app.settingsRepository.setDefaultPurpose(defaultPurpose)
         }
+    }
+
+    fun savePlace(place: SavedPlace) {
+        viewModelScope.launch { app.savedPlaceRepository.upsert(place) }
+    }
+
+    fun deletePlace(id: String) {
+        viewModelScope.launch { app.savedPlaceRepository.delete(id) }
     }
 
     fun addManualTrip(trip: TripEntity) {

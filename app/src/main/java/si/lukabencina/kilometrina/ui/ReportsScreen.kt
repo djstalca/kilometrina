@@ -63,6 +63,12 @@ fun ReportsScreen(
         }
     }
     val summary = remember(monthTrips) { ReportCalculator.summarize(monthTrips) }
+    val monthVehicles = remember(monthTrips) {
+        monthTrips
+            .map { listOf(it.vehicleName, it.registrationPlate).filter(String::isNotBlank).joinToString(" • ") }
+            .filter(String::isNotBlank)
+            .distinct()
+    }
 
     val csvLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv"),
@@ -113,7 +119,10 @@ fun ReportsScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        IconButton(onClick = { selectedMonthValue = selectedMonth.plusMonths(1).toString() }) {
+                        IconButton(
+                            onClick = { selectedMonthValue = selectedMonth.plusMonths(1).toString() },
+                            enabled = selectedMonth < YearMonth.now(),
+                        ) {
                             Icon(Icons.Outlined.ChevronRight, contentDescription = "Naslednji mesec")
                         }
                     }
@@ -137,13 +146,17 @@ fun ReportsScreen(
                     Text("Podatki na poročilu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     ReportProfileLine("Voznik", settings.driverName)
                     ReportProfileLine("Podjetje", settings.companyName)
-                    ReportProfileLine(
-                        "Vozilo",
-                        listOf(settings.vehicleName, settings.registrationPlate).filter { it.isNotBlank() }.joinToString(" • "),
-                    )
-                    if (settings.driverName.isBlank() || settings.vehicleName.isBlank()) {
+                    ReportProfileLine("Vozila", monthVehicles.joinToString(", "))
+                    if (settings.driverName.isBlank()) {
                         Text(
-                            "V Nastavitvah dopolni voznika in vozilo, da bo PDF pripravljen za oddajo.",
+                            "V Nastavitvah dopolni ime voznika.",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (monthTrips.isNotEmpty() && monthVehicles.isEmpty()) {
+                        Text(
+                            "Nekatere stare vožnje nimajo zapisanega vozila. Po želji jih lahko dopolniš z urejanjem vožnje.",
                             color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.bodySmall,
                         )

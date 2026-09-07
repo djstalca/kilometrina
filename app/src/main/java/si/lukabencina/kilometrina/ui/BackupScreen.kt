@@ -1,5 +1,6 @@
 package si.lukabencina.kilometrina.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,11 +26,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
+import si.lukabencina.kilometrina.diagnostics.LocalCrashReporter
+
+private const val PRIVACY_POLICY_URL = "https://github.com/djstalca/kilometrina/blob/main/PRIVACY_POLICY.md"
 
 @Composable
 fun BackupScreen(
@@ -38,8 +43,10 @@ fun BackupScreen(
     hasActiveTrip: Boolean,
     viewModel: BackupViewModel = viewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
+    var lastCrash by remember { mutableStateOf(LocalCrashReporter.lastCrash(context)) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -59,7 +66,7 @@ fun BackupScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Podatki", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                Text("Varnostna kopija in obnova", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Varnostna kopija, zasebnost in diagnostika", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -71,7 +78,7 @@ fun BackupScreen(
                     DataLine("Priljubljene lokacije", savedPlaceCount.toString())
                     HorizontalDivider()
                     Text(
-                        "Backup vključuje tudi nastavitve, podatke za poročila in surove GPS točke posameznih voženj.",
+                        "Backup vključuje tudi nastavitve, vozila, podatke za poročila in surove GPS točke posameznih voženj.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -132,11 +139,52 @@ fun BackupScreen(
         item {
             Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.extraLarge) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Zasebnost", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "GPS lokacije, relacije, vozila in obračuni se obdelujejo lokalno. Aplikacija nima oglasov, analitike ali uporabniškega računa in podatkov ne pošilja razvijalcu.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Politika zasebnosti")
+                    }
+                }
+            }
+        }
+
+        item {
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.extraLarge) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Samodejni Android backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
                         "Aplikacija dovoljuje Android Auto Backup in prenos podatkov na nov telefon za lokalno bazo ter nastavitve. Ročni JSON backup ostaja priporočljiv pred večjimi spremembami ali menjavo telefona.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+
+        lastCrash?.let { crash ->
+            item {
+                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.extraLarge) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Zadnja nepričakovana napaka", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            crash.lineSequence().take(5).joinToString("\n"),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = {
+                            LocalCrashReporter.clear(context)
+                            lastCrash = null
+                        }) {
+                            Text("Počisti zapis")
+                        }
+                    }
                 }
             }
         }
@@ -155,7 +203,7 @@ fun BackupScreen(
             onDismissRequest = { pendingRestore = null },
             title = { Text("Obnovim varnostno kopijo?") },
             text = {
-                Text("Obstoječe vožnje, GPS točke, priljubljene lokacije in nastavitve bodo zamenjane s podatki iz izbrane kopije. Dejanja brez druge varnostne kopije ni mogoče razveljaviti.")
+                Text("Obstoječe vožnje, GPS točke, priljubljene lokacije, vozila in nastavitve bodo zamenjane s podatki iz izbrane kopije. Dejanja brez druge varnostne kopije ni mogoče razveljaviti.")
             },
             confirmButton = {
                 Button(onClick = {

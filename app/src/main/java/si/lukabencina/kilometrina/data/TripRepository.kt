@@ -19,6 +19,7 @@ data class LocationAppendResult(
 class TripRepository(
     private val context: Context,
     private val dao: TripDao,
+    private val savedPlaceRepository: SavedPlaceRepository,
 ) {
     val trips: Flow<List<TripEntity>> = dao.observeTrips()
     val activeTrip: Flow<TripEntity?> = dao.observeActiveTrip()
@@ -32,7 +33,7 @@ class TripRepository(
         ratePerKm: Double,
         vehicle: Vehicle?,
     ): Long {
-        val address = reverseGeocode(location.latitude, location.longitude)
+        val address = smartLocationLabel(location.latitude, location.longitude)
         val timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
         val id = dao.insertTrip(
             TripEntity(
@@ -144,13 +145,23 @@ class TripRepository(
             }
         }
 
-        val address = finalLocation?.let { reverseGeocode(it.latitude, it.longitude) }
+        val matchedPlace = finalLocation?.let {
+            savedPlaceRepository.nearestPlace(it.latitude, it.longitude)?.place
+        }
+        val address = finalLocation?.let {
+            matchedPlace?.name ?: reverseGeocode(it.latitude, it.longitude)
+        }
+        val smartPurpose = matchedPlace?.defaultPurpose
+            ?.takeIf { it.isNotBlank() && active.purpose.trim().equals("Službena pot", ignoreCase = true) }
+            ?: active.purpose
+
         dao.updateTrip(
             active.copy(
                 endTime = System.currentTimeMillis(),
                 endLat = finalLocation?.latitude,
                 endLon = finalLocation?.longitude,
                 endAddress = address ?: "Lokacija ni na voljo",
+                purpose = smartPurpose,
             ),
         )
     }
@@ -174,6 +185,9 @@ class TripRepository(
     }
 
     suspend fun deleteTrip(id: Long) = dao.deleteTrip(id)
+
+    private suspend fun smartLocationLabel(lat: Double, lon: Double): String =
+        savedPlaceRepository.displayNameFor(lat, lon) ?: reverseGeocode(lat, lon)
 
     private suspend fun reverseGeocode(lat: Double, lon: Double): String = withContext(Dispatchers.IO) {
         runCatching {

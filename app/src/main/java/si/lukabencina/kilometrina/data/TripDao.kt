@@ -39,6 +39,9 @@ interface TripDao {
     @Query("SELECT * FROM location_points ORDER BY id")
     suspend fun getAllPoints(): List<LocationPointEntity>
 
+    @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY timestamp ASC")
+    suspend fun getPointsForTrip(tripId: Long): List<LocationPointEntity>
+
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLastPoint(tripId: Long): LocationPointEntity?
 

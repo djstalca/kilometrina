@@ -24,8 +24,14 @@ class TripRepository(
     val activeTrip: Flow<TripEntity?> = dao.observeActiveTrip()
 
     suspend fun getActiveTrip(): TripEntity? = dao.getActiveTrip()
+    suspend fun getRoutePoints(tripId: Long): List<LocationPointEntity> = dao.getPointsForTrip(tripId)
 
-    suspend fun startTrip(location: Location, purpose: String, ratePerKm: Double): Long {
+    suspend fun startTrip(
+        location: Location,
+        purpose: String,
+        ratePerKm: Double,
+        vehicle: Vehicle?,
+    ): Long {
         val address = reverseGeocode(location.latitude, location.longitude)
         val timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
         val id = dao.insertTrip(
@@ -36,6 +42,9 @@ class TripRepository(
                 startAddress = address,
                 purpose = purpose.trim().ifBlank { "Službena pot" },
                 ratePerKm = ratePerKm,
+                vehicleId = vehicle?.id.orEmpty(),
+                vehicleName = vehicle?.name.orEmpty(),
+                registrationPlate = vehicle?.registrationPlate.orEmpty(),
             ),
         )
         dao.insertPoint(
@@ -69,6 +78,8 @@ class TripRepository(
                 ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
                 tollsCents = trip.tollsCents.coerceAtLeast(0),
                 parkingCents = trip.parkingCents.coerceAtLeast(0),
+                vehicleName = trip.vehicleName.trim().take(80),
+                registrationPlate = trip.registrationPlate.trim().uppercase().take(24),
             ),
         )
     }
@@ -156,6 +167,8 @@ class TripRepository(
                 ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
                 tollsCents = trip.tollsCents.coerceAtLeast(0),
                 parkingCents = trip.parkingCents.coerceAtLeast(0),
+                vehicleName = trip.vehicleName.trim().take(80),
+                registrationPlate = trip.registrationPlate.trim().uppercase().take(24),
             ),
         )
     }

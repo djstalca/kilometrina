@@ -10,6 +10,7 @@ import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -29,6 +30,7 @@ private enum class MainTab(val label: String) {
     Home("Domov"),
     Trips("Vožnje"),
     Reports("Poročila"),
+    Data("Podatki"),
     Settings("Nastavitve"),
 }
 
@@ -49,6 +51,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                         MainTab.Home -> Icons.Outlined.Home
                         MainTab.Trips -> Icons.Outlined.ReceiptLong
                         MainTab.Reports -> Icons.Outlined.Assessment
+                        MainTab.Data -> Icons.Outlined.Storage
                         MainTab.Settings -> Icons.Outlined.Settings
                     }
                     NavigationBarItem(
@@ -83,6 +86,11 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                 MainTab.Reports -> ReportsScreen(
                     trips = uiState.trips,
                     settings = uiState.settings,
+                )
+                MainTab.Data -> BackupScreen(
+                    tripCount = uiState.trips.count { it.endTime != null },
+                    savedPlaceCount = uiState.savedPlaces.size,
+                    hasActiveTrip = uiState.activeTrip != null,
                 )
                 MainTab.Settings -> SettingsScreen(
                     settings = uiState.settings,

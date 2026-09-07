@@ -30,13 +30,7 @@ class SavedPlaceRepository(private val context: Context) {
     }
 
     suspend fun upsert(place: SavedPlace) {
-        val normalized = place.copy(
-            name = place.name.trim(),
-            address = place.address.trim(),
-            defaultPurpose = place.defaultPurpose.trim(),
-        )
-        if (normalized.name.isBlank() || normalized.address.isBlank()) return
-
+        val normalized = normalize(place) ?: return
         context.savedPlacesDataStore.edit { prefs ->
             val current = prefs[placesKey].orEmpty()
                 .mapNotNull(SavedPlaceCodec::decode)
@@ -56,6 +50,23 @@ class SavedPlaceRepository(private val context: Context) {
                 .map(SavedPlaceCodec::encode)
                 .toSet()
         }
+    }
+
+    suspend fun replaceAll(places: List<SavedPlace>) {
+        val normalized = places.mapNotNull(::normalize).distinctBy { it.id }
+        context.savedPlacesDataStore.edit { prefs ->
+            prefs[placesKey] = normalized.map(SavedPlaceCodec::encode).toSet()
+        }
+    }
+
+    private fun normalize(place: SavedPlace): SavedPlace? {
+        val normalized = place.copy(
+            id = place.id.trim(),
+            name = place.name.trim().take(60),
+            address = place.address.trim().take(160),
+            defaultPurpose = place.defaultPurpose.trim().take(80),
+        )
+        return normalized.takeIf { it.id.isNotBlank() && it.name.isNotBlank() && it.address.isNotBlank() }
     }
 }
 

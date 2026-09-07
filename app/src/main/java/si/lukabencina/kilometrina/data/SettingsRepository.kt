@@ -59,4 +59,15 @@ class SettingsRepository(private val context: Context) {
             prefs[registrationPlateKey] = registrationPlate.trim().uppercase().take(24)
         }
     }
+
+    suspend fun replaceAll(settings: AppSettings) {
+        context.dataStore.edit { prefs ->
+            prefs[rateKey] = settings.ratePerKm.coerceIn(0.0, 10.0)
+            prefs[purposeKey] = settings.defaultPurpose.trim().ifBlank { "Službena pot" }.take(80)
+            prefs[driverNameKey] = settings.driverName.trim().take(80)
+            prefs[companyNameKey] = settings.companyName.trim().take(100)
+            prefs[vehicleNameKey] = settings.vehicleName.trim().take(100)
+            prefs[registrationPlateKey] = settings.registrationPlate.trim().uppercase().take(24)
+        }
+    }
 }

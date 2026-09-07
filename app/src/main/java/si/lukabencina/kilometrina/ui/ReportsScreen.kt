@@ -2,16 +2,20 @@ package si.lukabencina.kilometrina.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -27,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,6 +45,7 @@ import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.util.Locale
 import si.lukabencina.kilometrina.data.AppSettings
 import si.lukabencina.kilometrina.data.TripEntity
@@ -54,6 +60,7 @@ fun ReportsScreen(
 ) {
     val context = LocalContext.current
     var selectedMonthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
+    var selectedStatsYear by rememberSaveable { mutableIntStateOf(YearMonth.now().year) }
     val selectedMonth = remember(selectedMonthValue) { YearMonth.parse(selectedMonthValue) }
     val completedTrips = remember(trips) { trips.filter { it.endTime != null } }
     val monthTrips = remember(completedTrips, selectedMonth) {
@@ -63,6 +70,9 @@ fun ReportsScreen(
         }
     }
     val summary = remember(monthTrips) { ReportCalculator.summarize(monthTrips) }
+    val yearStats = remember(completedTrips, selectedStatsYear) {
+        StatisticsCalculator.calculate(completedTrips, selectedStatsYear)
+    }
     val monthVehicles = remember(monthTrips) {
         monthTrips
             .map { listOf(it.vehicleName, it.registrationPlate).filter(String::isNotBlank).joinToString(" • ") }
@@ -98,9 +108,61 @@ fun ReportsScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Poročila", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                Text("Mesečni obračun za oddajo ali arhiv", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Poročila in statistika", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                Text("Pregled leta in mesečni obračuni za oddajo", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+
+        item {
+            YearStatisticsCard(
+                statistics = yearStats,
+                onPreviousYear = { selectedStatsYear -= 1 },
+                onNextYear = { selectedStatsYear += 1 },
+                nextEnabled = selectedStatsYear < YearMonth.now().year,
+            )
+        }
+
+        if (yearStats.topRoutes.isNotEmpty()) {
+            item {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.extraLarge) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Najpogostejše relacije", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        yearStats.topRoutes.forEachIndexed { index, route ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("${index + 1}. ${route.route}", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${route.tripCount} voženj • ${String.format(reportLocale, "%.1f km", route.distanceKm)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text(formatMoney(route.totalAmount), fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (yearStats.vehicles.isNotEmpty()) {
+            item {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.extraLarge) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Po vozilih", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        yearStats.vehicles.forEach { vehicle ->
+                            ReportProfileLine(
+                                vehicle.vehicle,
+                                "${String.format(reportLocale, "%.1f km", vehicle.distanceKm)} • ${formatMoney(vehicle.totalAmount)}",
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Text("Mesečni obračun", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         }
 
         item {
@@ -193,6 +255,76 @@ fun ReportsScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun YearStatisticsCard(
+    statistics: YearStatistics,
+    onPreviousYear: () -> Unit,
+    onNextYear: () -> Unit,
+    nextEnabled: Boolean,
+) {
+    val maxKm = statistics.months.maxOfOrNull { it.distanceKm }?.coerceAtLeast(1.0) ?: 1.0
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onPreviousYear) {
+                    Icon(Icons.Outlined.ChevronLeft, contentDescription = "Prejšnje leto")
+                }
+                Text(statistics.year.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                IconButton(onClick = onNextYear, enabled = nextEnabled) {
+                    Icon(Icons.Outlined.ChevronRight, contentDescription = "Naslednje leto")
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                ReportMetric("Vožnje", statistics.tripCount.toString(), Modifier.weight(1f))
+                ReportMetric("Kilometri", String.format(reportLocale, "%.0f km", statistics.distanceKm), Modifier.weight(1f))
+                ReportMetric("Skupaj", formatMoney(statistics.totalAmount), Modifier.weight(1f))
+            }
+
+            HorizontalDivider()
+            Text("Kilometri po mesecih", style = MaterialTheme.typography.labelLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth().height(120.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                statistics.months.forEach { month ->
+                    val ratio = (month.distanceKm / maxKm).coerceIn(0.0, 1.0)
+                    val barHeight = if (month.distanceKm <= 0.0) 3.dp else (12 + 72 * ratio).dp
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                    ) {
+                        Box(
+                            Modifier
+                                .width(12.dp)
+                                .height(barHeight)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)),
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            java.time.Month.of(month.month)
+                                .getDisplayName(TextStyle.NARROW, reportLocale)
+                                .uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            ReportCostLine("Kilometrina", statistics.mileageAmount)
+            ReportCostLine("Dodatni stroški", statistics.additionalCosts)
+            ReportCostLine("Skupaj leto", statistics.totalAmount, emphasized = true)
         }
     }
 }

@@ -59,6 +59,7 @@ class LocationTrackingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         createNotificationChannel()
         consumerJob = scope.launch {
             for (event in events) {
@@ -192,6 +193,7 @@ class LocationTrackingService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         fused.removeLocationUpdates(locationCallback)
         events.close()
         consumerJob?.cancel()
@@ -206,6 +208,10 @@ class LocationTrackingService : Service() {
         const val ACTION_STOP = "si.lukabencina.kilometrina.action.STOP"
         private const val CHANNEL_ID = "trip_tracking"
         private const val NOTIFICATION_ID = 1001
+
+        @Volatile
+        var isRunning: Boolean = false
+            private set
 
         fun start(context: android.content.Context) {
             val intent = Intent(context, LocationTrackingService::class.java).setAction(ACTION_START)

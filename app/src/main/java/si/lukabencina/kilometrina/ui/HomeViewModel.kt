@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -31,6 +32,7 @@ data class HomeUiState(
     val activeTrip: TripEntity? = null,
     val trips: List<TripEntity> = emptyList(),
     val settings: AppSettings = AppSettings(),
+    val recoveryRequired: Boolean = false,
 ) {
     val recentTrip: TripEntity?
         get() = trips.firstOrNull { it.endTime != null }
@@ -40,18 +42,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as KilometrinaApplication
     private val repository = app.tripRepository
     private val fused = LocationServices.getFusedLocationProviderClient(application)
+    private val recoveryRequired = MutableStateFlow(false)
 
     val uiState: StateFlow<HomeUiState> = combine(
         repository.activeTrip,
         repository.trips,
         app.settingsRepository.settings,
-    ) { active, trips, settings ->
+        recoveryRequired,
+    ) { active, trips, settings, recovery ->
         HomeUiState(
             activeTrip = active,
             trips = trips,
             settings = settings,
+            recoveryRequired = recovery && active != null,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    init {
+        viewModelScope.launch {
+            recoveryRequired.value = repository.getActiveTrip() != null && !LocationTrackingService.isRunning
+        }
+    }
 
     fun startTrip(purpose: String, onStateChanged: (StartState) -> Unit) {
         if (!hasLocationPermission()) {
@@ -77,10 +88,33 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     throw error
                 }
             }.onSuccess {
+                recoveryRequired.value = false
                 onStateChanged(StartState.Idle)
             }.onFailure {
                 onStateChanged(StartState.Error(it.message ?: "Začetek vožnje ni uspel."))
             }
+        }
+    }
+
+    fun resumeRecoveredTrip(onStateChanged: (StartState) -> Unit) {
+        if (!hasLocationPermission()) {
+            onStateChanged(StartState.Error("Dovoli lokacijo, da lahko nadaljujem sledenje."))
+            return
+        }
+        runCatching {
+            LocationTrackingService.start(getApplication())
+        }.onSuccess {
+            recoveryRequired.value = false
+            onStateChanged(StartState.Idle)
+        }.onFailure {
+            onStateChanged(StartState.Error(it.message ?: "Nadaljevanje sledenja ni uspelo."))
+        }
+    }
+
+    fun finishRecoveredTrip() {
+        viewModelScope.launch {
+            repository.finishTrip(null)
+            recoveryRequired.value = false
         }
     }
 
@@ -93,6 +127,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             app.settingsRepository.setRatePerKm(ratePerKm)
             app.settingsRepository.setDefaultPurpose(defaultPurpose)
         }
+    }
+
+    fun addManualTrip(trip: TripEntity) {
+        viewModelScope.launch { repository.addManualTrip(trip) }
     }
 
     fun updateTrip(trip: TripEntity) {

@@ -4,15 +4,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val BACKUP_FORMAT = "kilometrina-backup"
-private const val BACKUP_SCHEMA_VERSION = 1
+private const val BACKUP_SCHEMA_VERSION = 2
+private const val MIN_SUPPORTED_SCHEMA_VERSION = 1
 private const val MAX_TRIPS = 50_000
 private const val MAX_POINTS = 750_000
 private const val MAX_PLACES = 2_000
+private const val MAX_VEHICLES = 100
 
 data class BackupData(
     val generatedAt: Long,
     val settings: AppSettings,
     val savedPlaces: List<SavedPlace>,
+    val vehicles: VehicleState = VehicleState(),
     val trips: List<TripEntity>,
     val points: List<LocationPointEntity>,
 )
@@ -25,6 +28,7 @@ object BackupCodec {
             .put("generatedAt", data.generatedAt)
             .put("settings", settingsToJson(data.settings))
             .put("savedPlaces", JSONArray().apply { data.savedPlaces.forEach { put(placeToJson(it)) } })
+            .put("vehicles", vehicleStateToJson(data.vehicles))
             .put("trips", JSONArray().apply { data.trips.forEach { put(tripToJson(it)) } })
             .put("points", JSONArray().apply { data.points.forEach { put(pointToJson(it)) } })
         return root.toString(2)
@@ -34,7 +38,8 @@ object BackupCodec {
         require(raw.length <= 64 * 1024 * 1024) { "Varnostna kopija je prevelika." }
         val root = JSONObject(raw)
         require(root.optString("format") == BACKUP_FORMAT) { "Datoteka ni varnostna kopija aplikacije Kilometrina." }
-        require(root.optInt("schemaVersion", -1) == BACKUP_SCHEMA_VERSION) { "Ta verzija varnostne kopije ni podprta." }
+        val schema = root.optInt("schemaVersion", -1)
+        require(schema in MIN_SUPPORTED_SCHEMA_VERSION..BACKUP_SCHEMA_VERSION) { "Ta verzija varnostne kopije ni podprta." }
 
         val tripsArray = root.getJSONArray("trips")
         val pointsArray = root.getJSONArray("points")
@@ -44,15 +49,33 @@ object BackupCodec {
         require(placesArray.length() <= MAX_PLACES) { "Varnostna kopija vsebuje preveč priljubljenih lokacij." }
 
         val settings = settingsFromJson(root.getJSONObject("settings"))
+        val vehicles = if (schema >= 2 && root.has("vehicles")) {
+            vehicleStateFromJson(root.getJSONObject("vehicles"))
+        } else {
+            legacyVehicleState(settings)
+        }
+        require(vehicles.vehicles.size <= MAX_VEHICLES) { "Varnostna kopija vsebuje preveč vozil." }
+
+        val fallbackVehicle = vehicles.defaultVehicle
         val trips = List(tripsArray.length()) { tripFromJson(tripsArray.getJSONObject(it)) }
+            .map { trip ->
+                if (trip.vehicleName.isBlank() && fallbackVehicle != null) {
+                    trip.copy(
+                        vehicleId = fallbackVehicle.id,
+                        vehicleName = fallbackVehicle.name,
+                        registrationPlate = fallbackVehicle.registrationPlate,
+                    )
+                } else trip
+            }
         val points = List(pointsArray.length()) { pointFromJson(pointsArray.getJSONObject(it)) }
         val places = List(placesArray.length()) { placeFromJson(placesArray.getJSONObject(it)) }
-        validate(settings, trips, points, places)
+        validate(settings, trips, points, places, vehicles)
 
         return BackupData(
             generatedAt = root.optLong("generatedAt", 0L),
             settings = settings,
             savedPlaces = places,
+            vehicles = vehicles,
             trips = trips,
             points = points,
         )
@@ -63,8 +86,17 @@ object BackupCodec {
         trips: List<TripEntity>,
         points: List<LocationPointEntity>,
         places: List<SavedPlace>,
+        vehicles: VehicleState,
     ) {
         require(settings.ratePerKm.isFinite() && settings.ratePerKm in 0.0..10.0) { "Neveljavna postavka v backupu." }
+        val vehicleIds = vehicles.vehicles.map { it.id }
+        require(vehicleIds.all { it.isNotBlank() } && vehicleIds.toSet().size == vehicleIds.size) { "Neveljavni ID-ji vozil." }
+        vehicles.vehicles.forEach { vehicle ->
+            require(vehicle.name.isNotBlank() && vehicle.name.length <= 80) { "Neveljavno ime vozila." }
+            require(vehicle.registrationPlate.isNotBlank() && vehicle.registrationPlate.length <= 24) { "Neveljavna registracija vozila." }
+        }
+        require(vehicles.defaultVehicleId.isBlank() || vehicles.defaultVehicleId in vehicleIds) { "Privzeto vozilo v backupu ne obstaja." }
+
         val tripIds = trips.map { it.id }
         require(tripIds.all { it > 0L } && tripIds.toSet().size == tripIds.size) { "Neveljavni ID-ji voženj." }
         trips.forEach { trip ->
@@ -76,6 +108,7 @@ object BackupCodec {
             require(trip.ratePerKm.isFinite() && trip.ratePerKm in 0.0..10.0) { "Neveljavna postavka vožnje." }
             require(trip.parkingCents >= 0 && trip.tollsCents >= 0) { "Neveljavni dodatni stroški." }
             require(trip.startAddress.length <= 500 && (trip.endAddress?.length ?: 0) <= 500 && trip.purpose.length <= 200) { "Predolgo besedilo v vožnji." }
+            require(trip.vehicleId.length <= 100 && trip.vehicleName.length <= 80 && trip.registrationPlate.length <= 24) { "Neveljavni podatki vozila v vožnji." }
         }
 
         val validTripIds = tripIds.toSet()
@@ -97,6 +130,16 @@ object BackupCodec {
         }
     }
 
+    private fun legacyVehicleState(settings: AppSettings): VehicleState {
+        if (settings.vehicleName.isBlank() || settings.registrationPlate.isBlank()) return VehicleState()
+        val vehicle = Vehicle(
+            id = "legacy-default",
+            name = settings.vehicleName,
+            registrationPlate = settings.registrationPlate,
+        )
+        return VehicleState(listOf(vehicle), vehicle.id)
+    }
+
     private fun settingsToJson(value: AppSettings) = JSONObject()
         .put("ratePerKm", value.ratePerKm)
         .put("defaultPurpose", value.defaultPurpose)
@@ -104,6 +147,7 @@ object BackupCodec {
         .put("companyName", value.companyName)
         .put("vehicleName", value.vehicleName)
         .put("registrationPlate", value.registrationPlate)
+        .put("autoDetectionEnabled", value.autoDetectionEnabled)
 
     private fun settingsFromJson(obj: JSONObject) = AppSettings(
         ratePerKm = obj.getDouble("ratePerKm"),
@@ -112,6 +156,32 @@ object BackupCodec {
         companyName = obj.optString("companyName", ""),
         vehicleName = obj.optString("vehicleName", ""),
         registrationPlate = obj.optString("registrationPlate", ""),
+        autoDetectionEnabled = obj.optBoolean("autoDetectionEnabled", false),
+    )
+
+    private fun vehicleStateToJson(value: VehicleState) = JSONObject()
+        .put("defaultVehicleId", value.defaultVehicleId)
+        .put("items", JSONArray().apply { value.vehicles.forEach { put(vehicleToJson(it)) } })
+
+    private fun vehicleStateFromJson(obj: JSONObject): VehicleState {
+        val array = obj.optJSONArray("items") ?: JSONArray()
+        val vehicles = List(array.length()) { vehicleFromJson(array.getJSONObject(it)) }
+        val requested = obj.optString("defaultVehicleId", "")
+        return VehicleState(
+            vehicles = vehicles,
+            defaultVehicleId = requested.takeIf { id -> vehicles.any { it.id == id } } ?: vehicles.firstOrNull()?.id.orEmpty(),
+        )
+    }
+
+    private fun vehicleToJson(value: Vehicle) = JSONObject()
+        .put("id", value.id)
+        .put("name", value.name)
+        .put("registrationPlate", value.registrationPlate)
+
+    private fun vehicleFromJson(obj: JSONObject) = Vehicle(
+        id = obj.getString("id"),
+        name = obj.getString("name"),
+        registrationPlate = obj.getString("registrationPlate"),
     )
 
     private fun placeToJson(value: SavedPlace) = JSONObject()
@@ -142,6 +212,9 @@ object BackupCodec {
         .put("ratePerKm", value.ratePerKm)
         .put("tollsCents", value.tollsCents)
         .put("parkingCents", value.parkingCents)
+        .put("vehicleId", value.vehicleId)
+        .put("vehicleName", value.vehicleName)
+        .put("registrationPlate", value.registrationPlate)
 
     private fun tripFromJson(obj: JSONObject) = TripEntity(
         id = obj.getLong("id"),
@@ -158,6 +231,9 @@ object BackupCodec {
         ratePerKm = obj.getDouble("ratePerKm"),
         tollsCents = obj.optInt("tollsCents", 0),
         parkingCents = obj.optInt("parkingCents", 0),
+        vehicleId = obj.optString("vehicleId", ""),
+        vehicleName = obj.optString("vehicleName", ""),
+        registrationPlate = obj.optString("registrationPlate", ""),
     )
 
     private fun pointToJson(value: LocationPointEntity) = JSONObject()

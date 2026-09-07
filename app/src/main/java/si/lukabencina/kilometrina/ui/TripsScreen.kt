@@ -1,5 +1,7 @@
 package si.lukabencina.kilometrina.ui
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Delete
@@ -47,20 +50,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripRules
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private val monthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", Locale.forLanguageTag("sl-SI"))
+private val slLocale = Locale.forLanguageTag("sl-SI")
+private val monthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", slLocale)
+private val dateTimeFormatter = DateTimeFormatter.ofPattern("d. M. yyyy • HH:mm", slLocale)
 
 @Composable
 fun TripsScreen(
     trips: List<TripEntity>,
+    defaultRatePerKm: Double,
     onDeleteTrip: (Long) -> Unit,
     onUpdateTrip: (TripEntity) -> Unit,
+    onAddManualTrip: (TripEntity) -> Unit,
 ) {
     val context = LocalContext.current
     val completedTrips = remember(trips) { trips.filter { it.endTime != null } }
@@ -78,6 +87,7 @@ fun TripsScreen(
     val monthTotal = monthTrips.sumOf(::tripTotalCost)
     var deleteCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var editCandidate by remember { mutableStateOf<TripEntity?>(null) }
+    var showManualDialog by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv"),
@@ -105,11 +115,16 @@ fun TripsScreen(
                     Text("Vožnje", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
                     Text("Pregled in mesečni obračun", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(
-                    onClick = { exportLauncher.launch("kilometrina-${selectedMonth}.csv") },
-                    enabled = monthTrips.isNotEmpty(),
-                ) {
-                    Icon(Icons.Outlined.FileDownload, contentDescription = "Izvozi izbrani mesec")
+                Row {
+                    IconButton(onClick = { showManualDialog = true }) {
+                        Icon(Icons.Outlined.Add, contentDescription = "Dodaj vožnjo ročno")
+                    }
+                    IconButton(
+                        onClick = { exportLauncher.launch("kilometrina-${selectedMonth}.csv") },
+                        enabled = monthTrips.isNotEmpty(),
+                    ) {
+                        Icon(Icons.Outlined.FileDownload, contentDescription = "Izvozi izbrani mesec")
+                    }
                 }
             }
         }
@@ -150,7 +165,7 @@ fun TripsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         SummaryMetric("Vožnje", monthTrips.size.toString(), Modifier.weight(1f))
-                        SummaryMetric("Kilometri", String.format(Locale.forLanguageTag("sl-SI"), "%.1f km", monthKm), Modifier.weight(1f))
+                        SummaryMetric("Kilometri", String.format(slLocale, "%.1f km", monthKm), Modifier.weight(1f))
                         SummaryMetric("Kilometrina", formatMoney(monthMileage), Modifier.weight(1f))
                     }
 
@@ -195,6 +210,18 @@ fun TripsScreen(
         }
     }
 
+    if (showManualDialog) {
+        ManualTripDialog(
+            defaultRatePerKm = defaultRatePerKm,
+            onDismiss = { showManualDialog = false },
+            onSave = {
+                onAddManualTrip(it)
+                showManualDialog = false
+                selectedMonthValue = YearMonth.from(fromEpochMillis(it.startTime)).toString()
+            },
+        )
+    }
+
     editCandidate?.let { trip ->
         EditTripDialog(
             trip = trip,
@@ -202,6 +229,7 @@ fun TripsScreen(
             onSave = {
                 onUpdateTrip(it)
                 editCandidate = null
+                selectedMonthValue = YearMonth.from(fromEpochMillis(it.startTime)).toString()
             },
         )
     }
@@ -301,11 +329,94 @@ private fun TripRow(trip: TripEntity, onEdit: () -> Unit, onDelete: () -> Unit) 
 }
 
 @Composable
+private fun ManualTripDialog(
+    defaultRatePerKm: Double,
+    onDismiss: () -> Unit,
+    onSave: (TripEntity) -> Unit,
+) {
+    val now = remember { LocalDateTime.now().withSecond(0).withNano(0) }
+    var startDateTime by remember { mutableStateOf(now.minusHours(1)) }
+    var endDateTime by remember { mutableStateOf(now) }
+    var purpose by remember { mutableStateOf("Službena pot") }
+    var startAddress by remember { mutableStateOf("") }
+    var endAddress by remember { mutableStateOf("") }
+    var distanceKm by remember { mutableStateOf("") }
+    var ratePerKm by remember { mutableStateOf(decimalInput(defaultRatePerKm, 2)) }
+    var parking by remember { mutableStateOf("") }
+    var tolls by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Dodaj vožnjo ročno") },
+        text = {
+            TripFormFields(
+                purpose = purpose,
+                onPurposeChange = { purpose = it },
+                startAddress = startAddress,
+                onStartAddressChange = { startAddress = it },
+                endAddress = endAddress,
+                onEndAddressChange = { endAddress = it },
+                startDateTime = startDateTime,
+                onStartDateTimeChange = { startDateTime = it },
+                endDateTime = endDateTime,
+                onEndDateTimeChange = { endDateTime = it },
+                distanceKm = distanceKm,
+                onDistanceKmChange = { distanceKm = it },
+                ratePerKm = ratePerKm,
+                onRatePerKmChange = { ratePerKm = it },
+                parking = parking,
+                onParkingChange = { parking = it },
+                tolls = tolls,
+                onTollsChange = { tolls = it },
+                errorMessage = errorMessage,
+            )
+        },
+        confirmButton = {
+            Button(onClick = {
+                val values = validateForm(
+                    startDateTime = startDateTime,
+                    endDateTime = endDateTime,
+                    distanceKm = distanceKm,
+                    ratePerKm = ratePerKm,
+                    parking = parking,
+                    tolls = tolls,
+                )
+                if (values == null) {
+                    errorMessage = "Preveri čas in številčne vrednosti. Prihod mora biti po odhodu."
+                    return@Button
+                }
+                onSave(
+                    TripEntity(
+                        startTime = toEpochMillis(startDateTime),
+                        endTime = toEpochMillis(endDateTime),
+                        startLat = 0.0,
+                        startLon = 0.0,
+                        startAddress = startAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                        endAddress = endAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                        distanceMeters = values.distanceKm * 1000.0,
+                        purpose = purpose.trim().ifBlank { "Službena pot" },
+                        ratePerKm = values.ratePerKm,
+                        parkingCents = (values.parking * 100.0).roundToInt(),
+                        tollsCents = (values.tolls * 100.0).roundToInt(),
+                    ),
+                )
+            }) { Text("Dodaj") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Prekliči") }
+        },
+    )
+}
+
+@Composable
 private fun EditTripDialog(
     trip: TripEntity,
     onDismiss: () -> Unit,
     onSave: (TripEntity) -> Unit,
 ) {
+    var startDateTime by remember(trip.id) { mutableStateOf(fromEpochMillis(trip.startTime)) }
+    var endDateTime by remember(trip.id) { mutableStateOf(fromEpochMillis(requireNotNull(trip.endTime))) }
     var purpose by remember(trip.id) { mutableStateOf(trip.purpose) }
     var startAddress by remember(trip.id) { mutableStateOf(trip.startAddress) }
     var endAddress by remember(trip.id) { mutableStateOf(trip.endAddress.orEmpty()) }
@@ -319,97 +430,53 @@ private fun EditTripDialog(
         onDismissRequest = onDismiss,
         title = { Text("Uredi vožnjo") },
         text = {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedTextField(
-                    value = purpose,
-                    onValueChange = { purpose = it },
-                    label = { Text("Namen poti") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = startAddress,
-                    onValueChange = { startAddress = it },
-                    label = { Text("Odhod") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = endAddress,
-                    onValueChange = { endAddress = it },
-                    label = { Text("Prihod") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = distanceKm,
-                    onValueChange = { distanceKm = it },
-                    label = { Text("Kilometri") },
-                    suffix = { Text("km") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = ratePerKm,
-                    onValueChange = { ratePerKm = it },
-                    label = { Text("Postavka") },
-                    suffix = { Text("€/km") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = parking,
-                    onValueChange = { parking = it },
-                    label = { Text("Parkirnina") },
-                    suffix = { Text("€") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = tolls,
-                    onValueChange = { tolls = it },
-                    label = { Text("Cestnina") },
-                    suffix = { Text("€") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                errorMessage?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            TripFormFields(
+                purpose = purpose,
+                onPurposeChange = { purpose = it },
+                startAddress = startAddress,
+                onStartAddressChange = { startAddress = it },
+                endAddress = endAddress,
+                onEndAddressChange = { endAddress = it },
+                startDateTime = startDateTime,
+                onStartDateTimeChange = { startDateTime = it },
+                endDateTime = endDateTime,
+                onEndDateTimeChange = { endDateTime = it },
+                distanceKm = distanceKm,
+                onDistanceKmChange = { distanceKm = it },
+                ratePerKm = ratePerKm,
+                onRatePerKmChange = { ratePerKm = it },
+                parking = parking,
+                onParkingChange = { parking = it },
+                tolls = tolls,
+                onTollsChange = { tolls = it },
+                errorMessage = errorMessage,
+            )
         },
         confirmButton = {
             Button(onClick = {
-                val kmValue = parseDecimal(distanceKm)
-                val rateValue = parseDecimal(ratePerKm)
-                val parkingValue = parseOptionalDecimal(parking)
-                val tollsValue = parseOptionalDecimal(tolls)
-                if (
-                    kmValue == null || rateValue == null || parkingValue == null || tollsValue == null ||
-                    kmValue < 0.0 || rateValue < 0.0 || parkingValue < 0.0 || tollsValue < 0.0
-                ) {
-                    errorMessage = "Preveri številčne vrednosti. Uporabi lahko piko ali vejico."
+                val values = validateForm(
+                    startDateTime = startDateTime,
+                    endDateTime = endDateTime,
+                    distanceKm = distanceKm,
+                    ratePerKm = ratePerKm,
+                    parking = parking,
+                    tolls = tolls,
+                )
+                if (values == null) {
+                    errorMessage = "Preveri čas in številčne vrednosti. Prihod mora biti po odhodu."
                     return@Button
                 }
-
                 onSave(
                     trip.copy(
+                        startTime = toEpochMillis(startDateTime),
+                        endTime = toEpochMillis(endDateTime),
                         purpose = purpose.trim().ifBlank { "Službena pot" },
                         startAddress = startAddress.trim().ifBlank { "Lokacija ni na voljo" },
                         endAddress = endAddress.trim().ifBlank { "Lokacija ni na voljo" },
-                        distanceMeters = kmValue * 1000.0,
-                        ratePerKm = rateValue,
-                        parkingCents = (parkingValue * 100.0).roundToInt(),
-                        tollsCents = (tollsValue * 100.0).roundToInt(),
+                        distanceMeters = values.distanceKm * 1000.0,
+                        ratePerKm = values.ratePerKm,
+                        parkingCents = (values.parking * 100.0).roundToInt(),
+                        tollsCents = (values.tolls * 100.0).roundToInt(),
                     ),
                 )
             }) { Text("Shrani") }
@@ -419,6 +486,179 @@ private fun EditTripDialog(
         },
     )
 }
+
+@Composable
+private fun TripFormFields(
+    purpose: String,
+    onPurposeChange: (String) -> Unit,
+    startAddress: String,
+    onStartAddressChange: (String) -> Unit,
+    endAddress: String,
+    onEndAddressChange: (String) -> Unit,
+    startDateTime: LocalDateTime,
+    onStartDateTimeChange: (LocalDateTime) -> Unit,
+    endDateTime: LocalDateTime,
+    onEndDateTimeChange: (LocalDateTime) -> Unit,
+    distanceKm: String,
+    onDistanceKmChange: (String) -> Unit,
+    ratePerKm: String,
+    onRatePerKmChange: (String) -> Unit,
+    parking: String,
+    onParkingChange: (String) -> Unit,
+    tolls: String,
+    onTollsChange: (String) -> Unit,
+    errorMessage: String?,
+) {
+    Column(
+        modifier = Modifier
+            .heightIn(max = 560.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        DateTimeField("Odhod", startDateTime, onStartDateTimeChange)
+        DateTimeField("Prihod", endDateTime, onEndDateTimeChange)
+        OutlinedTextField(
+            value = purpose,
+            onValueChange = onPurposeChange,
+            label = { Text("Namen poti") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = startAddress,
+            onValueChange = onStartAddressChange,
+            label = { Text("Lokacija odhoda") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = endAddress,
+            onValueChange = onEndAddressChange,
+            label = { Text("Lokacija prihoda") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = distanceKm,
+            onValueChange = onDistanceKmChange,
+            label = { Text("Kilometri") },
+            suffix = { Text("km") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = ratePerKm,
+            onValueChange = onRatePerKmChange,
+            label = { Text("Postavka") },
+            suffix = { Text("€/km") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = parking,
+            onValueChange = onParkingChange,
+            label = { Text("Parkirnina") },
+            suffix = { Text("€") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = tolls,
+            onValueChange = onTollsChange,
+            label = { Text("Cestnina") },
+            suffix = { Text("€") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun DateTimeField(
+    label: String,
+    value: LocalDateTime,
+    onValueChange: (LocalDateTime) -> Unit,
+) {
+    val context = LocalContext.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        OutlinedButton(
+            onClick = {
+                DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        val selectedDate = LocalDateTime.of(
+                            year,
+                            month + 1,
+                            day,
+                            value.hour,
+                            value.minute,
+                        )
+                        TimePickerDialog(
+                            context,
+                            { _, hour, minute ->
+                                onValueChange(selectedDate.withHour(hour).withMinute(minute))
+                            },
+                            value.hour,
+                            value.minute,
+                            true,
+                        ).show()
+                    },
+                    value.year,
+                    value.monthValue - 1,
+                    value.dayOfMonth,
+                ).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(value.format(dateTimeFormatter))
+        }
+    }
+}
+
+private data class ValidatedTripValues(
+    val distanceKm: Double,
+    val ratePerKm: Double,
+    val parking: Double,
+    val tolls: Double,
+)
+
+private fun validateForm(
+    startDateTime: LocalDateTime,
+    endDateTime: LocalDateTime,
+    distanceKm: String,
+    ratePerKm: String,
+    parking: String,
+    tolls: String,
+): ValidatedTripValues? {
+    val start = toEpochMillis(startDateTime)
+    val end = toEpochMillis(endDateTime)
+    if (!TripRules.hasValidTimeRange(start, end)) return null
+
+    val kmValue = parseDecimal(distanceKm)
+    val rateValue = parseDecimal(ratePerKm)
+    val parkingValue = parseOptionalDecimal(parking)
+    val tollsValue = parseOptionalDecimal(tolls)
+    if (
+        kmValue == null || rateValue == null || parkingValue == null || tollsValue == null ||
+        kmValue < 0.0 || rateValue < 0.0 || parkingValue < 0.0 || tollsValue < 0.0
+    ) return null
+
+    return ValidatedTripValues(kmValue, rateValue, parkingValue, tollsValue)
+}
+
+private fun toEpochMillis(value: LocalDateTime): Long =
+    value.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+private fun fromEpochMillis(value: Long): LocalDateTime =
+    Instant.ofEpochMilli(value).atZone(ZoneId.systemDefault()).toLocalDateTime()
 
 private fun parseDecimal(value: String): Double? =
     value.trim().replace(',', '.').toDoubleOrNull()

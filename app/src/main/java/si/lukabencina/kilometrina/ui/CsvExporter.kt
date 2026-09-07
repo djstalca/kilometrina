@@ -15,6 +15,9 @@ object CsvExporter {
             "Kilometri",
             "Postavka EUR/km",
             "Kilometrina EUR",
+            "Parkirnina EUR",
+            "Cestnina EUR",
+            "Skupaj EUR",
         ).joinToString(";")
 
         val rows = trips.filter { it.endTime != null }.map { trip ->
@@ -28,6 +31,9 @@ object CsvExporter {
                 decimal(trip.distanceMeters / 1000.0),
                 decimal(trip.ratePerKm),
                 decimal(tripCompensation(trip)),
+                decimal(trip.parkingCents / 100.0),
+                decimal(trip.tollsCents / 100.0),
+                decimal(tripTotalCost(trip)),
             ).joinToString(";")
         }
         return (listOf(header) + rows).joinToString("\n")

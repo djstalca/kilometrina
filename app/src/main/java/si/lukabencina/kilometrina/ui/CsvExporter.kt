@@ -23,7 +23,7 @@ object CsvExporter {
 
         lines += metadata("Obračun", "Mesečni obračun kilometrine")
         month?.let {
-            val value = it.atDay(1).format(monthFormatter).replaceFirstChar { char -> char.uppercase(locale) }
+            val value = it.atDay(1).format(monthFormatter).replaceFirstChar { char -> char.uppercase() }
             lines += metadata("Mesec", value)
         }
         lines += metadata("Voznik", settings.driverName)

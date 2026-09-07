@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -23,6 +24,10 @@ import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.data.AppSettings
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.Vehicle
+import si.lukabencina.kilometrina.data.VehicleState
+import si.lukabencina.kilometrina.location.DrivingDetectionManager
+import si.lukabencina.kilometrina.location.DrivingSuggestionNotifications
 import si.lukabencina.kilometrina.location.LocationTrackingService
 import si.lukabencina.kilometrina.location.TrackingDiagnostics
 import si.lukabencina.kilometrina.location.TrackingDiagnosticsState
@@ -38,6 +43,7 @@ data class HomeUiState(
     val trips: List<TripEntity> = emptyList(),
     val settings: AppSettings = AppSettings(),
     val savedPlaces: List<SavedPlace> = emptyList(),
+    val vehicleState: VehicleState = VehicleState(),
     val recoveryRequired: Boolean = false,
     val trackingDiagnostics: TrackingDiagnosticsState = TrackingDiagnosticsState(),
 ) {
@@ -65,6 +71,12 @@ data class HomeUiState(
             .toList()
 }
 
+private data class PreferencesState(
+    val settings: AppSettings,
+    val savedPlaces: List<SavedPlace>,
+    val vehicles: VehicleState,
+)
+
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as KilometrinaApplication
     private val repository = app.tripRepository
@@ -74,7 +86,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = combine(
         app.settingsRepository.settings,
         app.savedPlaceRepository.places,
-    ) { settings, savedPlaces -> settings to savedPlaces }
+        app.vehicleRepository.state,
+    ) { settings, savedPlaces, vehicles ->
+        PreferencesState(settings, savedPlaces, vehicles)
+    }
 
     val uiState: StateFlow<HomeUiState> = combine(
         repository.activeTrip,
@@ -86,8 +101,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         HomeUiState(
             activeTrip = active,
             trips = trips,
-            settings = preferencesValue.first,
-            savedPlaces = preferencesValue.second,
+            settings = preferencesValue.settings,
+            savedPlaces = preferencesValue.savedPlaces,
+            vehicleState = preferencesValue.vehicles,
             recoveryRequired = recovery && active != null,
             trackingDiagnostics = diagnostics,
         )
@@ -96,6 +112,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             recoveryRequired.value = repository.getActiveTrip() != null && !LocationTrackingService.isRunning
+            val settings = app.settingsRepository.settings.first()
+            val vehicles = app.vehicleRepository.state.first()
+            if (vehicles.vehicles.isEmpty()) {
+                app.vehicleRepository.seedLegacyIfEmpty(settings.vehicleName, settings.registrationPlate)
+            }
+            if (settings.autoDetectionEnabled && DrivingDetectionManager.hasPermission(application)) {
+                runCatching { DrivingDetectionManager.enable(application) }
+            }
         }
     }
 
@@ -121,8 +145,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 if (!location.hasAccuracy() || location.accuracy > 50f) {
                     error("GPS signal je trenutno preslab (±${location.accuracy.toInt()} m). Premakni se na bolj odprto mesto in poskusi znova.")
                 }
-                val settings = uiState.value.settings
-                val tripId = repository.startTrip(location, purpose, settings.ratePerKm)
+                val state = uiState.value
+                val tripId = repository.startTrip(
+                    location = location,
+                    purpose = purpose,
+                    ratePerKm = state.settings.ratePerKm,
+                    vehicle = state.vehicleState.defaultVehicle,
+                )
                 try {
                     LocationTrackingService.start(getApplication())
                 } catch (error: Throwable) {
@@ -130,6 +159,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     throw error
                 }
             }.onSuccess {
+                DrivingSuggestionNotifications.cancelAll(getApplication())
                 recoveryRequired.value = false
                 onStateChanged(StartState.Idle)
             }.onFailure {
@@ -160,11 +190,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun finishRecoveredTrip() {
         viewModelScope.launch {
             repository.finishTrip(null)
+            DrivingSuggestionNotifications.cancelAll(getApplication())
             recoveryRequired.value = false
         }
     }
 
     fun stopTrip() {
+        DrivingSuggestionNotifications.cancelAll(getApplication())
         LocationTrackingService.stop(getApplication())
     }
 
@@ -173,19 +205,36 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         defaultPurpose: String,
         driverName: String,
         companyName: String,
-        vehicleName: String,
-        registrationPlate: String,
     ) {
         viewModelScope.launch {
             app.settingsRepository.setRatePerKm(ratePerKm)
             app.settingsRepository.setDefaultPurpose(defaultPurpose)
-            app.settingsRepository.setReportProfile(
-                driverName = driverName,
-                companyName = companyName,
-                vehicleName = vehicleName,
-                registrationPlate = registrationPlate,
-            )
+            app.settingsRepository.setIdentityProfile(driverName, companyName)
         }
+    }
+
+    fun setAutoDetectionEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled) {
+                val registered = runCatching { DrivingDetectionManager.enable(getApplication()) }.isSuccess
+                app.settingsRepository.setAutoDetectionEnabled(registered)
+            } else {
+                app.settingsRepository.setAutoDetectionEnabled(false)
+                DrivingDetectionManager.disable(getApplication())
+            }
+        }
+    }
+
+    fun saveVehicle(vehicle: Vehicle, makeDefault: Boolean) {
+        viewModelScope.launch { app.vehicleRepository.upsert(vehicle, makeDefault) }
+    }
+
+    fun deleteVehicle(id: String) {
+        viewModelScope.launch { app.vehicleRepository.delete(id) }
+    }
+
+    fun setDefaultVehicle(id: String) {
+        viewModelScope.launch { app.vehicleRepository.setDefault(id) }
     }
 
     fun savePlace(place: SavedPlace) {

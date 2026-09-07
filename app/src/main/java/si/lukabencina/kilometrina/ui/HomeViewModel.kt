@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -22,6 +23,8 @@ import si.lukabencina.kilometrina.data.AppSettings
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.location.LocationTrackingService
+import si.lukabencina.kilometrina.location.TrackingDiagnostics
+import si.lukabencina.kilometrina.location.TrackingDiagnosticsState
 
 sealed interface StartState {
     data object Idle : StartState
@@ -35,6 +38,7 @@ data class HomeUiState(
     val settings: AppSettings = AppSettings(),
     val savedPlaces: List<SavedPlace> = emptyList(),
     val recoveryRequired: Boolean = false,
+    val trackingDiagnostics: TrackingDiagnosticsState = TrackingDiagnosticsState(),
 ) {
     val recentTrip: TripEntity?
         get() = trips.firstOrNull { it.endTime != null }
@@ -76,13 +80,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         repository.trips,
         preferences,
         recoveryRequired,
-    ) { active, trips, preferencesValue, recovery ->
+        TrackingDiagnostics.state,
+    ) { active, trips, preferencesValue, recovery, diagnostics ->
         HomeUiState(
             activeTrip = active,
             trips = trips,
             settings = preferencesValue.first,
             savedPlaces = preferencesValue.second,
             recoveryRequired = recovery && active != null,
+            trackingDiagnostics = diagnostics,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -94,7 +100,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startTrip(purpose: String, onStateChanged: (StartState) -> Unit) {
         if (!hasLocationPermission()) {
-            onStateChanged(StartState.Error("Dovoli lokacijo za beleženje vožnje."))
+            onStateChanged(StartState.Error("Dovoli natančno lokacijo za beleženje vožnje."))
+            return
+        }
+        if (!isLocationEnabled()) {
+            onStateChanged(StartState.Error("Vklopi lokacijo (GPS) na telefonu in poskusi znova."))
             return
         }
         viewModelScope.launch {
@@ -102,11 +112,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 val request = CurrentLocationRequest.Builder()
                     .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-                    .setDurationMillis(12_000L)
-                    .setMaxUpdateAgeMillis(3_000L)
+                    .setDurationMillis(15_000L)
+                    .setMaxUpdateAgeMillis(2_000L)
                     .build()
                 val location: Location = fused.getCurrentLocation(request, null).await()
                     ?: error("Trenutne lokacije ni bilo mogoče pridobiti.")
+                if (!location.hasAccuracy() || location.accuracy > 50f) {
+                    error("GPS signal je trenutno preslab (±${location.accuracy.toInt()} m). Premakni se na bolj odprto mesto in poskusi znova.")
+                }
                 val settings = uiState.value.settings
                 val tripId = repository.startTrip(location, purpose, settings.ratePerKm)
                 try {
@@ -126,7 +139,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resumeRecoveredTrip(onStateChanged: (StartState) -> Unit) {
         if (!hasLocationPermission()) {
-            onStateChanged(StartState.Error("Dovoli lokacijo, da lahko nadaljujem sledenje."))
+            onStateChanged(StartState.Error("Dovoli natančno lokacijo, da lahko nadaljujem sledenje."))
+            return
+        }
+        if (!isLocationEnabled()) {
+            onStateChanged(StartState.Error("Vklopi lokacijo (GPS), preden nadaljuješ sledenje."))
             return
         }
         runCatching {
@@ -180,5 +197,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private fun hasLocationPermission(): Boolean {
         val context = getApplication<Application>()
         return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun isLocationEnabled(): Boolean {
+        val manager = getApplication<Application>().getSystemService(LocationManager::class.java)
+        return manager?.isLocationEnabled == true
     }
 }

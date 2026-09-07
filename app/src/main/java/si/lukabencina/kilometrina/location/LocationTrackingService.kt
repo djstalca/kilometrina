@@ -9,10 +9,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationAvailability
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -24,6 +26,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.MainActivity
@@ -47,6 +50,7 @@ class LocationTrackingService : Service() {
     private var startedAt: Long = 0L
     private var startJob: Job? = null
     private var consumerJob: Job? = null
+    private var healthJob: Job? = null
     private var stopping = false
 
     private val locationCallback = object : LocationCallback() {
@@ -55,11 +59,17 @@ class LocationTrackingService : Service() {
                 events.trySend(TrackingEvent.LocationFix(location))
             }
         }
+
+        override fun onLocationAvailability(availability: LocationAvailability) {
+            TrackingDiagnostics.locationAvailabilityChanged(availability.isLocationAvailable)
+            updateNotification()
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        TrackingDiagnostics.trackingStarted()
         createNotificationChannel()
         consumerJob = scope.launch {
             for (event in events) {
@@ -70,6 +80,12 @@ class LocationTrackingService : Service() {
                         break
                     }
                 }
+            }
+        }
+        healthJob = scope.launch {
+            while (true) {
+                delay(5_000L)
+                if (activeTripId != null && !stopping) updateNotification()
             }
         }
     }
@@ -118,13 +134,39 @@ class LocationTrackingService : Service() {
             .setMinUpdateDistanceMeters(3f)
             .build()
         fused.requestLocationUpdates(request, locationCallback, mainLooper)
+            .addOnFailureListener {
+                TrackingDiagnostics.locationAvailabilityChanged(false)
+                updateNotification()
+            }
     }
 
     private suspend fun processLocation(location: Location) {
         val tripId = activeTripId ?: return
-        lastLocation = location
-        val added = repository.appendLocation(tripId, location)
-        if (added > 0.0) distanceMeters += added
+        val fixElapsedMs = if (location.elapsedRealtimeNanos > 0L) {
+            location.elapsedRealtimeNanos / 1_000_000L
+        } else {
+            SystemClock.elapsedRealtime()
+        }
+        val fixAgeSeconds = ((SystemClock.elapsedRealtime() - fixElapsedMs).coerceAtLeast(0L)) / 1000.0
+        TrackingDiagnostics.locationFix(fixElapsedMs, location.accuracy)
+
+        // Keep the freshest plausible fix for the trip endpoint even when a
+        // tiny movement is rejected as jitter.
+        if (fixAgeSeconds <= 30.0 && location.accuracy <= 50f) {
+            lastLocation = location
+        }
+
+        val result = repository.appendLocation(tripId, location)
+        result.evaluation?.let { evaluation ->
+            if (evaluation.accepted) {
+                TrackingDiagnostics.acceptedSegment()
+            } else {
+                TrackingDiagnostics.rejectedSegment(
+                    requireNotNull(evaluation.rejectionReason),
+                )
+            }
+        }
+        if (result.addedMeters > 0.0) distanceMeters += result.addedMeters
         updateNotification()
     }
 
@@ -139,6 +181,7 @@ class LocationTrackingService : Service() {
     private suspend fun finishTracking() {
         repository.finishTrip(lastLocation)
         activeTripId = null
+        TrackingDiagnostics.trackingStopped()
         ServiceCompat.stopForeground(this@LocationTrackingService, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -188,14 +231,33 @@ class LocationTrackingService : Service() {
 
     private fun notificationText(): String {
         val km = distanceMeters / 1000.0
-        val elapsedMinutes = ((System.currentTimeMillis() - startedAt).coerceAtLeast(0L) / 60_000L)
-        return String.format(Locale.getDefault(), "%.1f km • %d min", km, elapsedMinutes)
+        val diagnostics = TrackingDiagnostics.state.value
+        val ageSeconds = diagnostics.lastFixElapsedRealtimeMs?.let {
+            ((SystemClock.elapsedRealtime() - it).coerceAtLeast(0L)) / 1000.0
+        }
+        val quality = GpsSignalEvaluator.quality(
+            isTracking = diagnostics.isTracking,
+            locationAvailable = diagnostics.locationAvailable,
+            lastFixAgeSeconds = ageSeconds,
+            accuracyMeters = diagnostics.lastAccuracyMeters,
+        )
+        val gpsText = when (quality) {
+            GpsSignalQuality.Good -> "GPS ±${diagnostics.lastAccuracyMeters?.toInt() ?: 0} m"
+            GpsSignalQuality.Fair -> "GPS srednji"
+            GpsSignalQuality.Poor -> "GPS šibek"
+            GpsSignalQuality.Lost -> "GPS izgubljen"
+            GpsSignalQuality.Unavailable -> "lokacija ni na voljo"
+            GpsSignalQuality.Waiting -> "čakam GPS"
+        }
+        return String.format(Locale.getDefault(), "%.1f km • %s", km, gpsText)
     }
 
     override fun onDestroy() {
         isRunning = false
+        TrackingDiagnostics.trackingStopped()
         fused.removeLocationUpdates(locationCallback)
         events.close()
+        healthJob?.cancel()
         consumerJob?.cancel()
         scope.cancel()
         super.onDestroy()

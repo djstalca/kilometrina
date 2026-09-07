@@ -43,6 +43,28 @@ class TripRepository(
         return id
     }
 
+    suspend fun addManualTrip(trip: TripEntity): Long {
+        val endTime = requireNotNull(trip.endTime) { "Ročna vožnja mora imeti čas prihoda." }
+        require(endTime > trip.startTime) { "Čas prihoda mora biti po času odhoda." }
+
+        return dao.insertTrip(
+            trip.copy(
+                id = 0,
+                startLat = 0.0,
+                startLon = 0.0,
+                endLat = null,
+                endLon = null,
+                startAddress = trip.startAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                endAddress = trip.endAddress?.trim()?.ifBlank { "Lokacija ni na voljo" },
+                purpose = trip.purpose.trim().ifBlank { "Službena pot" },
+                distanceMeters = trip.distanceMeters.coerceAtLeast(0.0),
+                ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
+                tollsCents = trip.tollsCents.coerceAtLeast(0),
+                parkingCents = trip.parkingCents.coerceAtLeast(0),
+            ),
+        )
+    }
+
     suspend fun appendLocation(tripId: Long, location: Location): Double {
         val last = dao.getLastPoint(tripId)
         if (last == null) {
@@ -102,7 +124,8 @@ class TripRepository(
     }
 
     suspend fun updateCompletedTrip(trip: TripEntity) {
-        if (trip.endTime == null) return
+        val endTime = trip.endTime ?: return
+        if (endTime <= trip.startTime) return
         dao.updateTrip(
             trip.copy(
                 startAddress = trip.startAddress.trim().ifBlank { "Lokacija ni na voljo" },

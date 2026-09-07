@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Settings
@@ -27,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 private enum class MainTab(val label: String) {
     Home("Domov"),
     Trips("Vožnje"),
+    Reports("Poročila"),
     Settings("Nastavitve"),
 }
 
@@ -46,6 +48,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     val icon = when (tab) {
                         MainTab.Home -> Icons.Outlined.Home
                         MainTab.Trips -> Icons.Outlined.ReceiptLong
+                        MainTab.Reports -> Icons.Outlined.Assessment
                         MainTab.Settings -> Icons.Outlined.Settings
                     }
                     NavigationBarItem(
@@ -76,6 +79,10 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     onDeleteTrip = viewModel::deleteTrip,
                     onUpdateTrip = viewModel::updateTrip,
                     onAddManualTrip = viewModel::addManualTrip,
+                )
+                MainTab.Reports -> ReportsScreen(
+                    trips = uiState.trips,
+                    settings = uiState.settings,
                 )
                 MainTab.Settings -> SettingsScreen(
                     settings = uiState.settings,

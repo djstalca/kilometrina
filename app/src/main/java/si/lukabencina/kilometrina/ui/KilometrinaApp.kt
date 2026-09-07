@@ -71,13 +71,18 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                 MainTab.Trips -> TripsScreen(
                     trips = uiState.trips,
                     defaultRatePerKm = uiState.settings.ratePerKm,
+                    savedPlaces = uiState.savedPlaces,
+                    recentLocations = uiState.recentLocations,
                     onDeleteTrip = viewModel::deleteTrip,
                     onUpdateTrip = viewModel::updateTrip,
                     onAddManualTrip = viewModel::addManualTrip,
                 )
                 MainTab.Settings -> SettingsScreen(
                     settings = uiState.settings,
+                    savedPlaces = uiState.savedPlaces,
                     onSave = viewModel::saveSettings,
+                    onSavePlace = viewModel::savePlace,
+                    onDeletePlace = viewModel::deletePlace,
                 )
             }
         }

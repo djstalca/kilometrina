@@ -95,6 +95,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateTrip(trip: TripEntity) {
+        viewModelScope.launch { repository.updateCompletedTrip(trip) }
+    }
+
     fun deleteTrip(id: Long) {
         viewModelScope.launch { repository.deleteTrip(id) }
     }

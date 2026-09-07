@@ -1,20 +1,24 @@
 # Kilometrina
 
-Android aplikacija za hitro beleženje službenih poti in obračun kilometrine.
+Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilometrino, stroške in poročila.
 
-## V0.1
+## Kilometrina 1.0
 
-- začetek vožnje z eno potezo,
-- GPS beleženje dejansko prevožene poti v foreground location servisu,
-- zaključek vožnje s shranjeno končno lokacijo,
-- namen poti,
-- nastavljiva postavka €/km (privzeto 0,43),
-- lokalna Room baza,
-- mesečni pregled kilometrov in zneska z listanjem med meseci,
-- CSV izvoz izbranega meseca, prilagojen odpiranju v Excelu,
-- brez uporabniškega računa in strežniške baze,
-- Material 3 / Jetpack Compose UI,
-- light/dark in Material You dinamične barve.
+- uporabniško sproženo GPS beleženje dejansko prevožene poti,
+- foreground location service z vidnim obvestilom tudi pri ugasnjenem zaslonu,
+- GPS diagnostika in filtriranje slabih/skokovitih meritev,
+- ročni vnos in popravljanje voženj,
+- recovery nedokončane vožnje,
+- priljubljene lokacije in pametno prepoznavanje shranjenih ciljev,
+- opcijska zaznava verjetne vožnje (privzeto izključena; vožnje nikoli ne začne samodejno),
+- več vozil z zgodovinskim snapshotom vozila na posamezni vožnji,
+- parkirnine in cestnine,
+- mesečni PDF in CSV obračuni,
+- letna statistika, top relacije in pregled po vozilih,
+- lokalni prikaz shranjene GPS trase,
+- JSON backup/restore ter Android Auto Backup/device transfer,
+- Material 3, light/dark in Material You,
+- lokalna obdelava brez uporabniškega računa, oglasov ali analitičnega SDK-ja.
 
 ## Stack
 
@@ -24,37 +28,44 @@ Android aplikacija za hitro beleženje službenih poti in obračun kilometrine.
 - Jetpack Compose BOM 2026.08.00
 - Material 3
 - Room 2.8.4
+- DataStore Preferences 1.2.0
 - Google Play services Location 21.4.0
-- DataStore Preferences
-
-## Razvoj
-
-Odpri projekt v aktualnem Android Studiu, počakaj na Gradle sync in zaženi `app` na fizičnem telefonu. Za realen test kilometrine uporabi fizični telefon z vklopljenim GPS.
-
-Aplikacija zahteva natančno lokacijo. Background location permission ni zahtevana: uporabnik začne vožnjo na vidnem zaslonu, nato sledenje teče kot location foreground service z vidnim obvestilom.
-
-## Naslednji koraki pred Play Store izdajo
-
-- instrumentacijski testi na več Android različicah,
-- test voženj v mestu, na avtocesti, v predoru in ob slabem GPS signalu,
-- urejanje že zaključene vožnje,
-- parkirnine in cestnine v UI,
-- PDF mesečni potni nalog,
-- varnostna kopija/obnova lokalnih podatkov,
-- Play Store privacy/data-safety dokumentacija,
-- podpisan AAB in release CI.
-
-## Build osnova
-
-- Android Gradle Plugin 9.4 z vgrajenim Kotlinom
-- Kotlin/Compose compiler 2.3.21
-- compileSdk 37, targetSdk 36, minSdk 26
+- compileSdk 37 / targetSdk 36 / minSdk 26
 - Java/Kotlin bytecode 17
 
+## Razvoj in preverjanje
 
-## Preverjeno v tem paketu
+Za realen test kilometrine uporabi fizični telefon z natančno lokacijo. Aplikacija ne zahteva `ACCESS_BACKGROUND_LOCATION`: uporabnik začne vožnjo na vidnem zaslonu, nato sledenje teče kot `location` foreground service z vidnim obvestilom.
 
-- GPS filtrirna logika je preverjena z lokalnim Kotlin testom.
-- CSV izračun in format sta preverjena z lokalnim Kotlin testom.
-- Android manifest in XML viri so sintaktično preverjeni.
-- Celoten Android build v tem okolju ni bil izveden, ker Android SDK in Gradle runtime nista nameščena. Prvi pravi build naj se izvede v Android Studiu z Android SDK 37.
+GitHub Actions ob vsakem pushu na `main` in `feature/**` preveri:
+
+- debug APK,
+- JVM unit teste,
+- Android lint,
+- optimiziran release AAB z R8 in resource shrinkingom.
+
+## Release signing
+
+Zasebni signing/upload key se ne hrani v repozitoriju. Workflow **Build signed release** uporablja samo GitHub Secrets:
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Ko so secrets nastavljeni, ročni workflow izdela in preveri podpisana `app-release.apk` in `app-release.aab` ter shrani R8 `mapping.txt`.
+
+## Play Store
+
+Priprava za Play Store je v mapi `play-store/`:
+
+- slovenski listing,
+- Data Safety delovni list,
+- foreground-service/location deklaracija in scenarij za demo video,
+- release checklist in načrt screenshotov.
+
+Politika zasebnosti je v [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
+
+## Zasebnost
+
+GPS točke, relacije, vozila, stroški in nastavitve se obdelujejo lokalno. Aplikacija nima lastnega strežnika, oglasov, analitike ali uporabniškega računa. Uporabnik lahko sam ustvari JSON backup; Android Auto Backup/device transfer sta podprta kot sistemski funkciji.

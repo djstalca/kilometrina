@@ -109,7 +109,7 @@ fun ReportsScreen(
                             Icon(Icons.Outlined.ChevronLeft, contentDescription = "Prejšnji mesec")
                         }
                         Text(
-                            selectedMonth.atDay(1).format(reportMonthFormatter).replaceFirstChar { it.uppercase(reportLocale) },
+                            selectedMonth.atDay(1).format(reportMonthFormatter).replaceFirstChar { it.uppercase() },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )

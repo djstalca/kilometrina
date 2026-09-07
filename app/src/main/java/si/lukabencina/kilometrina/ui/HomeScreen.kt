@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,17 +47,24 @@ import kotlinx.coroutines.delay
 import si.lukabencina.kilometrina.data.TripEntity
 import java.util.Locale
 
+private enum class PendingLocationAction {
+    Start,
+    Resume,
+}
+
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
     onStart: (String, (StartState) -> Unit) -> Unit,
     onStop: () -> Unit,
+    onResumeRecovered: ((StartState) -> Unit) -> Unit,
+    onFinishRecovered: () -> Unit,
     onOpenTrips: () -> Unit,
 ) {
     var purpose by rememberSaveable { mutableStateOf("") }
     var lastAppliedDefaultPurpose by rememberSaveable { mutableStateOf("") }
     var startState by remember { mutableStateOf<StartState>(StartState.Idle) }
-    var pendingStart by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<PendingLocationAction?>(null) }
     var showStopDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.settings.defaultPurpose) {
@@ -70,17 +78,21 @@ fun HomeScreen(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
         val locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        if (pendingStart && locationGranted) {
-            pendingStart = false
-            onStart(purpose) { startState = it }
-        } else if (pendingStart) {
-            pendingStart = false
+        val action = pendingAction
+        pendingAction = null
+        if (!locationGranted) {
             startState = StartState.Error("Za zanesljivo kilometrino izberi natančno lokacijo.")
+            return@rememberLauncherForActivityResult
+        }
+        when (action) {
+            PendingLocationAction.Start -> onStart(purpose) { startState = it }
+            PendingLocationAction.Resume -> onResumeRecovered { startState = it }
+            null -> Unit
         }
     }
 
-    fun requestAndStart() {
-        pendingStart = true
+    fun requestLocation(action: PendingLocationAction) {
+        pendingAction = action
         val permissions = buildList {
             add(Manifest.permission.ACCESS_FINE_LOCATION)
             add(Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -103,7 +115,11 @@ fun HomeScreen(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = if (uiState.activeTrip == null) "Službene poti brez ročnega zapisovanja." else "Vožnja se trenutno beleži.",
+                text = when {
+                    uiState.recoveryRequired -> "Nedokončana vožnja potrebuje potrditev."
+                    uiState.activeTrip == null -> "Službene poti brez ročnega zapisovanja."
+                    else -> "Vožnja se trenutno beleži."
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -116,11 +132,15 @@ fun HomeScreen(
                     onPurposeChange = { purpose = it },
                     ratePerKm = uiState.settings.ratePerKm,
                     startState = startState,
-                    onStart = ::requestAndStart,
+                    onStart = { requestLocation(PendingLocationAction.Start) },
                 )
             } else {
                 ActiveTripCard(
                     trip = requireNotNull(uiState.activeTrip),
+                    recoveryRequired = uiState.recoveryRequired,
+                    recoveryState = startState,
+                    onResume = { requestLocation(PendingLocationAction.Resume) },
+                    onFinishRecovered = onFinishRecovered,
                     onStop = { showStopDialog = true },
                 )
             }
@@ -235,10 +255,17 @@ private fun ReadyCard(
 }
 
 @Composable
-private fun ActiveTripCard(trip: TripEntity, onStop: () -> Unit) {
+private fun ActiveTripCard(
+    trip: TripEntity,
+    recoveryRequired: Boolean,
+    recoveryState: StartState,
+    onResume: () -> Unit,
+    onFinishRecovered: () -> Unit,
+    onStop: () -> Unit,
+) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(trip.id) {
-        while (true) {
+    LaunchedEffect(trip.id, recoveryRequired) {
+        while (!recoveryRequired) {
             now = System.currentTimeMillis()
             delay(1_000)
         }
@@ -267,7 +294,11 @@ private fun ActiveTripCard(trip: TripEntity, onStop: () -> Unit) {
                 }
                 Spacer(Modifier.size(12.dp))
                 Column {
-                    Text("Vožnja v teku", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (recoveryRequired) "Nedokončana vožnja" else "Vožnja v teku",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text(trip.purpose, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
                 }
             }
@@ -292,12 +323,41 @@ private fun ActiveTripCard(trip: TripEntity, onStop: () -> Unit) {
                 Text(shortLocation(trip.startAddress), color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
             }
 
-            FilledTonalButton(
-                onClick = onStop,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = MaterialTheme.shapes.large,
-            ) {
-                Text("Končaj vožnjo")
+            if (recoveryRequired) {
+                Text(
+                    "Sledenje se je prekinilo. Nadaljuješ lahko od trenutne lokacije ali pot zaključiš z zadnjo shranjeno lokacijo.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+                Button(
+                    onClick = onResume,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text("Nadaljuj sledenje")
+                }
+                OutlinedButton(
+                    onClick = onFinishRecovered,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text("Zaključi zdaj")
+                }
+                if (recoveryState is StartState.Error) {
+                    Text(
+                        recoveryState.message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            } else {
+                FilledTonalButton(
+                    onClick = onStop,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text("Končaj vožnjo")
+                }
             }
         }
     }
@@ -336,7 +396,7 @@ private fun RecentTripCard(trip: TripEntity, onOpenTrips: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(formatDate(trip.startTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${formatKm(trip.distanceMeters)} • ${formatMoney(tripCompensation(trip))}", fontWeight = FontWeight.Medium)
+                Text("${formatKm(trip.distanceMeters)} • ${formatMoney(tripTotalCost(trip))}", fontWeight = FontWeight.Medium)
             }
         }
     }

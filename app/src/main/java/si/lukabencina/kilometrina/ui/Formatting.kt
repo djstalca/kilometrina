@@ -24,6 +24,10 @@ fun formatMoney(amount: Double): String = NumberFormat.getCurrencyInstance(slLoc
 
 fun tripCompensation(trip: TripEntity): Double = (trip.distanceMeters / 1000.0) * trip.ratePerKm
 
+fun tripAdditionalCosts(trip: TripEntity): Double = (trip.tollsCents + trip.parkingCents) / 100.0
+
+fun tripTotalCost(trip: TripEntity): Double = tripCompensation(trip) + tripAdditionalCosts(trip)
+
 fun shortLocation(address: String?): String {
     if (address.isNullOrBlank()) return "Lokacija ni na voljo"
     return address.split(',').take(2).joinToString(", ").trim()

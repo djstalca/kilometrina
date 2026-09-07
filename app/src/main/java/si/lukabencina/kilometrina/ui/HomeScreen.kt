@@ -2,6 +2,7 @@ package si.lukabencina.kilometrina.ui
 
 import android.Manifest
 import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -20,6 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.GpsFixed
+import androidx.compose.material.icons.outlined.GpsNotFixed
+import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Navigation
 import androidx.compose.material3.AlertDialog
@@ -48,6 +52,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.location.GpsSignalEvaluator
+import si.lukabencina.kilometrina.location.GpsSignalQuality
+import si.lukabencina.kilometrina.location.SegmentRejectionReason
+import si.lukabencina.kilometrina.location.TrackingDiagnosticsState
 import java.util.Locale
 
 private enum class PendingLocationAction {
@@ -150,6 +158,7 @@ fun HomeScreen(
             } else {
                 ActiveTripCard(
                     trip = requireNotNull(uiState.activeTrip),
+                    diagnostics = uiState.trackingDiagnostics,
                     recoveryRequired = uiState.recoveryRequired,
                     recoveryState = startState,
                     onResume = { requestLocation(PendingLocationAction.Resume) },
@@ -289,6 +298,7 @@ private fun ReadyCard(
 @Composable
 private fun ActiveTripCard(
     trip: TripEntity,
+    diagnostics: TrackingDiagnosticsState,
     recoveryRequired: Boolean,
     recoveryState: StartState,
     onResume: () -> Unit,
@@ -296,9 +306,11 @@ private fun ActiveTripCard(
     onStop: () -> Unit,
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var elapsedRealtimeNow by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(trip.id, recoveryRequired) {
         while (!recoveryRequired) {
             now = System.currentTimeMillis()
+            elapsedRealtimeNow = SystemClock.elapsedRealtime()
             delay(1_000)
         }
     }
@@ -333,6 +345,10 @@ private fun ActiveTripCard(
                     )
                     Text(trip.purpose, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
                 }
+            }
+
+            if (!recoveryRequired) {
+                GpsHealthRow(diagnostics, elapsedRealtimeNow)
             }
 
             Text(
@@ -393,6 +409,86 @@ private fun ActiveTripCard(
             }
         }
     }
+}
+
+@Composable
+private fun GpsHealthRow(
+    diagnostics: TrackingDiagnosticsState,
+    elapsedRealtimeNow: Long,
+) {
+    val ageSeconds = diagnostics.lastFixElapsedRealtimeMs?.let {
+        ((elapsedRealtimeNow - it).coerceAtLeast(0L)) / 1000.0
+    }
+    val quality = GpsSignalEvaluator.quality(
+        isTracking = diagnostics.isTracking,
+        locationAvailable = diagnostics.locationAvailable,
+        lastFixAgeSeconds = ageSeconds,
+        accuracyMeters = diagnostics.lastAccuracyMeters,
+    )
+    val accuracy = diagnostics.lastAccuracyMeters?.toInt()
+    val (title, detail) = when (quality) {
+        GpsSignalQuality.Good -> "GPS dober" to accuracy?.let { "±$it m" }
+        GpsSignalQuality.Fair -> "GPS srednji" to accuracy?.let { "±$it m" }
+        GpsSignalQuality.Poor -> {
+            if (ageSeconds != null && ageSeconds > 15.0) {
+                "GPS zamuja" to "zadnja meritev ${ageSeconds.toInt()} s"
+            } else {
+                "GPS šibek" to accuracy?.let { "±$it m" }
+            }
+        }
+        GpsSignalQuality.Lost -> "GPS signal izgubljen" to ageSeconds?.let { "zadnja meritev ${it.toInt()} s" }
+        GpsSignalQuality.Unavailable -> "Lokacija ni na voljo" to "preveri GPS v telefonu"
+        GpsSignalQuality.Waiting -> "Čakam na GPS" to null
+    }
+    val icon = when (quality) {
+        GpsSignalQuality.Good, GpsSignalQuality.Fair -> Icons.Outlined.GpsFixed
+        GpsSignalQuality.Poor, GpsSignalQuality.Lost, GpsSignalQuality.Waiting -> Icons.Outlined.GpsNotFixed
+        GpsSignalQuality.Unavailable -> Icons.Outlined.LocationOff
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text(title, fontWeight = FontWeight.SemiBold)
+                }
+                detail?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (diagnostics.rejectedSegments > 0) {
+                val lastReason = diagnostics.lastRejectionReason?.let(::rejectionReasonLabel)
+                Text(
+                    buildString {
+                        append("Filtrirano ${diagnostics.rejectedSegments} slabih meritev")
+                        if (lastReason != null) append(" • nazadnje: $lastReason")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun rejectionReasonLabel(reason: SegmentRejectionReason): String = when (reason) {
+    SegmentRejectionReason.InvalidMeasurement -> "neveljavna meritev"
+    SegmentRejectionReason.StaleFix -> "stara GPS meritev"
+    SegmentRejectionReason.LowAccuracy -> "slaba natančnost"
+    SegmentRejectionReason.GpsJitter -> "GPS odmik"
+    SegmentRejectionReason.ImpossibleSpeed -> "GPS skok"
 }
 
 @Composable

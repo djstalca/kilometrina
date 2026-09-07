@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -66,6 +69,15 @@ fun HomeScreen(
     var startState by remember { mutableStateOf<StartState>(StartState.Idle) }
     var pendingAction by remember { mutableStateOf<PendingLocationAction?>(null) }
     var showStopDialog by remember { mutableStateOf(false) }
+
+    val purposeSuggestions = remember(uiState.savedPlaces, uiState.recentPurposes) {
+        buildList {
+            uiState.savedPlaces
+                .filter { it.defaultPurpose.isNotBlank() }
+                .forEach { add(it.name to it.defaultPurpose) }
+            uiState.recentPurposes.forEach { add(it to it) }
+        }.distinctBy { it.second.lowercase() }.take(6)
+    }
 
     LaunchedEffect(uiState.settings.defaultPurpose) {
         if (purpose.isBlank() || purpose == lastAppliedDefaultPurpose) {
@@ -130,6 +142,7 @@ fun HomeScreen(
                 ReadyCard(
                     purpose = purpose,
                     onPurposeChange = { purpose = it },
+                    purposeSuggestions = purposeSuggestions,
                     ratePerKm = uiState.settings.ratePerKm,
                     startState = startState,
                     onStart = { requestLocation(PendingLocationAction.Start) },
@@ -173,6 +186,7 @@ fun HomeScreen(
 private fun ReadyCard(
     purpose: String,
     onPurposeChange: (String) -> Unit,
+    purposeSuggestions: List<Pair<String, String>>,
     ratePerKm: Double,
     startState: StartState,
     onStart: () -> Unit,
@@ -217,6 +231,24 @@ private fun ReadyCard(
                 label = { Text("Namen poti") },
                 singleLine = true,
             )
+
+            if (purposeSuggestions.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Hitri nameni",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(purposeSuggestions, key = { "${it.first}|${it.second}" }) { suggestion ->
+                            SuggestionChip(
+                                onClick = { onPurposeChange(suggestion.second) },
+                                label = { Text(suggestion.first) },
+                            )
+                        }
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

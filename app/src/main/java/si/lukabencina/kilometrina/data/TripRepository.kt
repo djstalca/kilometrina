@@ -101,6 +101,21 @@ class TripRepository(
         )
     }
 
+    suspend fun updateCompletedTrip(trip: TripEntity) {
+        if (trip.endTime == null) return
+        dao.updateTrip(
+            trip.copy(
+                startAddress = trip.startAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                endAddress = trip.endAddress?.trim()?.ifBlank { "Lokacija ni na voljo" },
+                purpose = trip.purpose.trim().ifBlank { "Službena pot" },
+                distanceMeters = trip.distanceMeters.coerceAtLeast(0.0),
+                ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
+                tollsCents = trip.tollsCents.coerceAtLeast(0),
+                parkingCents = trip.parkingCents.coerceAtLeast(0),
+            ),
+        )
+    }
+
     suspend fun deleteTrip(id: Long) = dao.deleteTrip(id)
 
     private suspend fun reverseGeocode(lat: Double, lon: Double): String = withContext(Dispatchers.IO) {

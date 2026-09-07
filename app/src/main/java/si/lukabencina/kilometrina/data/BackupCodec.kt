@@ -127,6 +127,9 @@ object BackupCodec {
             require(place.name.isNotBlank() && place.name.length <= 60) { "Neveljavno ime priljubljene lokacije." }
             require(place.address.isNotBlank() && place.address.length <= 160) { "Neveljaven naslov priljubljene lokacije." }
             require(place.defaultPurpose.length <= 80) { "Predolg privzeti namen poti." }
+            require(place.lat == null || validLat(place.lat)) { "Neveljavna širina priljubljene lokacije." }
+            require(place.lon == null || validLon(place.lon)) { "Neveljavna dolžina priljubljene lokacije." }
+            require(place.matchRadiusMeters in 100..1500) { "Neveljaven radij priljubljene lokacije." }
         }
     }
 
@@ -189,12 +192,18 @@ object BackupCodec {
         .put("name", value.name)
         .put("address", value.address)
         .put("defaultPurpose", value.defaultPurpose)
+        .putNullable("lat", value.lat)
+        .putNullable("lon", value.lon)
+        .put("matchRadiusMeters", value.matchRadiusMeters)
 
     private fun placeFromJson(obj: JSONObject) = SavedPlace(
         id = obj.getString("id"),
         name = obj.getString("name"),
         address = obj.getString("address"),
         defaultPurpose = obj.optString("defaultPurpose", ""),
+        lat = obj.nullableDouble("lat"),
+        lon = obj.nullableDouble("lon"),
+        matchRadiusMeters = obj.optInt("matchRadiusMeters", 250).coerceIn(100, 1500),
     )
 
     private fun tripToJson(value: TripEntity) = JSONObject()
@@ -256,9 +265,9 @@ object BackupCodec {
     )
 
     private fun JSONObject.putNullable(key: String, value: Any?): JSONObject = put(key, value ?: JSONObject.NULL)
-    private fun JSONObject.nullableLong(key: String): Long? = if (isNull(key)) null else getLong(key)
-    private fun JSONObject.nullableDouble(key: String): Double? = if (isNull(key)) null else getDouble(key)
-    private fun JSONObject.nullableString(key: String): String? = if (isNull(key)) null else getString(key)
+    private fun JSONObject.nullableLong(key: String): Long? = if (!has(key) || isNull(key)) null else getLong(key)
+    private fun JSONObject.nullableDouble(key: String): Double? = if (!has(key) || isNull(key)) null else getDouble(key)
+    private fun JSONObject.nullableString(key: String): String? = if (!has(key) || isNull(key)) null else getString(key)
     private fun validLat(value: Double): Boolean = value.isFinite() && value in -90.0..90.0
     private fun validLon(value: Double): Boolean = value.isFinite() && value in -180.0..180.0
 }

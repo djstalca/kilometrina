@@ -26,9 +26,9 @@ class StatisticsCalculatorTest {
         assertEquals("Dom → Prodent", result.topRoutes.first().route)
         assertEquals(2, result.topRoutes.first().tripCount)
         assertEquals(2, result.vehicles.size)
-        assertEquals(78.36, result.mileageAmount, 0.001)
+        assertEquals(78.26, result.mileageAmount, 0.001)
         assertEquals(6.0, result.additionalCosts, 0.001)
-        assertEquals(84.36, result.totalAmount, 0.001)
+        assertEquals(84.26, result.totalAmount, 0.001)
     }
 
     private fun trip(

@@ -7,6 +7,7 @@ class BackupRepository(
     private val database: AppDatabase,
     private val settingsRepository: SettingsRepository,
     private val savedPlaceRepository: SavedPlaceRepository,
+    private val vehicleRepository: VehicleRepository,
 ) {
     private val dao = database.tripDao()
 
@@ -29,6 +30,7 @@ class BackupRepository(
             tripCount = incoming.trips.size,
             pointCount = incoming.points.size,
             savedPlaceCount = incoming.savedPlaces.size,
+            vehicleCount = incoming.vehicles.vehicles.size,
         )
     }
 
@@ -36,6 +38,7 @@ class BackupRepository(
         generatedAt = System.currentTimeMillis(),
         settings = settingsRepository.settings.first(),
         savedPlaces = savedPlaceRepository.places.first(),
+        vehicles = vehicleRepository.state.first(),
         trips = dao.getAllTrips(),
         points = dao.getAllPoints(),
     )
@@ -49,6 +52,7 @@ class BackupRepository(
         }
         settingsRepository.replaceAll(data.settings)
         savedPlaceRepository.replaceAll(data.savedPlaces)
+        vehicleRepository.replaceAll(data.vehicles)
     }
 }
 
@@ -56,4 +60,5 @@ data class BackupRestoreSummary(
     val tripCount: Int,
     val pointCount: Int,
     val savedPlaceCount: Int,
+    val vehicleCount: Int = 0,
 )

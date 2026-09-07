@@ -2,7 +2,6 @@ package si.lukabencina.kilometrina.data
 
 import android.content.Context
 import android.location.Geocoder
-import android.location.Location
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -10,6 +9,10 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -122,23 +125,36 @@ class SavedPlaceRepository(private val context: Context) {
     }
 
     companion object {
+        private const val EARTH_RADIUS_METERS = 6_371_000.0
+
         fun nearestPlace(places: List<SavedPlace>, lat: Double, lon: Double): SavedPlaceMatch? {
             if (!validLat(lat) || !validLon(lon)) return null
             return places.asSequence()
                 .filter { it.hasCoordinates }
                 .map { place ->
-                    val result = FloatArray(1)
-                    Location.distanceBetween(
-                        lat,
-                        lon,
-                        requireNotNull(place.lat),
-                        requireNotNull(place.lon),
-                        result,
+                    SavedPlaceMatch(
+                        place = place,
+                        distanceMeters = distanceMeters(
+                            lat,
+                            lon,
+                            requireNotNull(place.lat),
+                            requireNotNull(place.lon),
+                        ),
                     )
-                    SavedPlaceMatch(place, result[0].toDouble())
                 }
                 .filter { it.distanceMeters <= it.place.matchRadiusMeters }
                 .minByOrNull { it.distanceMeters }
+        }
+
+        fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+            val dLat = Math.toRadians(lat2 - lat1)
+            val dLon = Math.toRadians(lon2 - lon1)
+            val rLat1 = Math.toRadians(lat1)
+            val rLat2 = Math.toRadians(lat2)
+            val a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(rLat1) * cos(rLat2) * sin(dLon / 2) * sin(dLon / 2)
+            val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+            return EARTH_RADIUS_METERS * c
         }
 
         private fun validLat(value: Double): Boolean = value.isFinite() && value in -90.0..90.0

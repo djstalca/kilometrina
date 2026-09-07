@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.location.CurrentLocationRequest
@@ -200,7 +201,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun isLocationEnabled(): Boolean {
-        val manager = getApplication<Application>().getSystemService(LocationManager::class.java)
-        return manager?.isLocationEnabled == true
+        val manager = getApplication<Application>().getSystemService(LocationManager::class.java) ?: return false
+        return LocationManagerCompat.isLocationEnabled(manager)
     }
 }

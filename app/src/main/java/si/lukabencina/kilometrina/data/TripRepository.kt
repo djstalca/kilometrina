@@ -3,11 +3,18 @@ package si.lukabencina.kilometrina.data
 import android.content.Context
 import android.location.Geocoder
 import android.location.Location
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import si.lukabencina.kilometrina.location.SegmentEvaluation
 import si.lukabencina.kilometrina.location.TrackingMath
 import java.util.Locale
+
+data class LocationAppendResult(
+    val addedMeters: Double,
+    val evaluation: SegmentEvaluation? = null,
+)
 
 class TripRepository(
     private val context: Context,
@@ -20,6 +27,7 @@ class TripRepository(
 
     suspend fun startTrip(location: Location, purpose: String, ratePerKm: Double): Long {
         val address = reverseGeocode(location.latitude, location.longitude)
+        val timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
         val id = dao.insertTrip(
             TripEntity(
                 startTime = System.currentTimeMillis(),
@@ -33,7 +41,7 @@ class TripRepository(
         dao.insertPoint(
             LocationPointEntity(
                 tripId = id,
-                timestamp = System.currentTimeMillis(),
+                timestamp = timestamp,
                 lat = location.latitude,
                 lon = location.longitude,
                 accuracyMeters = location.accuracy,
@@ -65,34 +73,47 @@ class TripRepository(
         )
     }
 
-    suspend fun appendLocation(tripId: Long, location: Location): Double {
+    suspend fun appendLocation(tripId: Long, location: Location): LocationAppendResult {
+        val timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
         val last = dao.getLastPoint(tripId)
         if (last == null) {
             dao.insertPoint(
                 LocationPointEntity(
                     tripId = tripId,
-                    timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                    timestamp = timestamp,
                     lat = location.latitude,
                     lon = location.longitude,
                     accuracyMeters = location.accuracy,
                     segmentMeters = 0.0,
                 ),
             )
-            return 0.0
+            return LocationAppendResult(addedMeters = 0.0)
         }
 
         val results = FloatArray(1)
         Location.distanceBetween(last.lat, last.lon, location.latitude, location.longitude, results)
         val segment = results[0].toDouble()
-        val elapsedSec = ((location.time.takeIf { it > 0 } ?: System.currentTimeMillis()) - last.timestamp)
-            .coerceAtLeast(1L) / 1000.0
-        // Ignore GPS jitter, low-accuracy fixes and impossible jumps.
-        if (!TrackingMath.shouldAcceptSegment(segment, elapsedSec, location.accuracy)) return 0.0
+        val elapsedSec = (timestamp - last.timestamp).coerceAtLeast(1L) / 1000.0
+        val fixAgeSec = if (location.elapsedRealtimeNanos > 0L) {
+            ((SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos).coerceAtLeast(0L)) / 1_000_000_000.0
+        } else {
+            0.0
+        }
+        val evaluation = TrackingMath.evaluateSegment(
+            distanceMeters = segment,
+            elapsedSeconds = elapsedSec,
+            accuracyMeters = location.accuracy,
+            previousAccuracyMeters = last.accuracyMeters,
+            fixAgeSeconds = fixAgeSec,
+        )
+        if (!evaluation.accepted) {
+            return LocationAppendResult(addedMeters = 0.0, evaluation = evaluation)
+        }
 
         dao.insertPoint(
             LocationPointEntity(
                 tripId = tripId,
-                timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                timestamp = timestamp,
                 lat = location.latitude,
                 lon = location.longitude,
                 accuracyMeters = location.accuracy,
@@ -100,7 +121,7 @@ class TripRepository(
             ),
         )
         dao.addDistance(tripId, segment)
-        return segment
+        return LocationAppendResult(addedMeters = segment, evaluation = evaluation)
     }
 
     suspend fun finishTrip(location: Location?) {

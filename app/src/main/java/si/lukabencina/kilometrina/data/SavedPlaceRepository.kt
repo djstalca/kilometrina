@@ -1,14 +1,20 @@
 package si.lukabencina.kilometrina.data
 
 import android.content.Context
+import android.location.Geocoder
+import android.location.Location
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 private val Context.savedPlacesDataStore by preferencesDataStore(name = "saved_places")
 
@@ -17,6 +23,17 @@ data class SavedPlace(
     val name: String,
     val address: String,
     val defaultPurpose: String = "",
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val matchRadiusMeters: Int = 250,
+) {
+    val hasCoordinates: Boolean
+        get() = lat != null && lon != null && lat.isFinite() && lon.isFinite() && lat in -90.0..90.0 && lon in -180.0..180.0
+}
+
+data class SavedPlaceMatch(
+    val place: SavedPlace,
+    val distanceMeters: Double,
 )
 
 class SavedPlaceRepository(private val context: Context) {
@@ -31,12 +48,13 @@ class SavedPlaceRepository(private val context: Context) {
 
     suspend fun upsert(place: SavedPlace) {
         val normalized = normalize(place) ?: return
+        val enriched = if (normalized.hasCoordinates) normalized else resolveCoordinates(normalized)
         context.savedPlacesDataStore.edit { prefs ->
             val current = prefs[placesKey].orEmpty()
                 .mapNotNull(SavedPlaceCodec::decode)
-                .filterNot { it.id == normalized.id }
+                .filterNot { it.id == enriched.id }
                 .toMutableList()
-            current += normalized
+            current += enriched
             prefs[placesKey] = current.map(SavedPlaceCodec::encode).toSet()
         }
     }
@@ -59,14 +77,72 @@ class SavedPlaceRepository(private val context: Context) {
         }
     }
 
+    suspend fun resolveMissingCoordinates() {
+        val current = places.first()
+        val missing = current.filterNot { it.hasCoordinates }
+        if (missing.isEmpty()) return
+        val resolved = current.map { place ->
+            if (place.hasCoordinates) place else resolveCoordinates(place)
+        }
+        replaceAll(resolved)
+    }
+
+    suspend fun nearestPlace(lat: Double, lon: Double): SavedPlaceMatch? {
+        if (!validLat(lat) || !validLon(lon)) return null
+        return nearestPlace(places.first(), lat, lon)
+    }
+
+    suspend fun displayNameFor(lat: Double, lon: Double): String? = nearestPlace(lat, lon)?.place?.name
+
+    private suspend fun resolveCoordinates(place: SavedPlace): SavedPlace = withContext(Dispatchers.IO) {
+        runCatching {
+            @Suppress("DEPRECATION")
+            Geocoder(context, Locale.getDefault())
+                .getFromLocationName(place.address, 1)
+                ?.firstOrNull()
+                ?.let { result ->
+                    if (validLat(result.latitude) && validLon(result.longitude)) {
+                        place.copy(lat = result.latitude, lon = result.longitude)
+                    } else place
+                }
+        }.getOrNull() ?: place
+    }
+
     private fun normalize(place: SavedPlace): SavedPlace? {
         val normalized = place.copy(
             id = place.id.trim(),
             name = place.name.trim().take(60),
             address = place.address.trim().take(160),
             defaultPurpose = place.defaultPurpose.trim().take(80),
+            lat = place.lat?.takeIf(::validLat),
+            lon = place.lon?.takeIf(::validLon),
+            matchRadiusMeters = place.matchRadiusMeters.coerceIn(100, 1500),
         )
         return normalized.takeIf { it.id.isNotBlank() && it.name.isNotBlank() && it.address.isNotBlank() }
+    }
+
+    companion object {
+        fun nearestPlace(places: List<SavedPlace>, lat: Double, lon: Double): SavedPlaceMatch? {
+            if (!validLat(lat) || !validLon(lon)) return null
+            return places.asSequence()
+                .filter { it.hasCoordinates }
+                .map { place ->
+                    val result = FloatArray(1)
+                    Location.distanceBetween(
+                        lat,
+                        lon,
+                        requireNotNull(place.lat),
+                        requireNotNull(place.lon),
+                        result,
+                    )
+                    SavedPlaceMatch(place, result[0].toDouble())
+                }
+                .filter { it.distanceMeters <= it.place.matchRadiusMeters }
+                .minByOrNull { it.distanceMeters }
+        }
+
+        private fun validLat(value: Double): Boolean = value.isFinite() && value in -90.0..90.0
+        private fun validLon(value: Double): Boolean = value.isFinite() && value in -180.0..180.0
     }
 }
 
@@ -76,16 +152,22 @@ object SavedPlaceCodec {
         place.name,
         place.address,
         place.defaultPurpose,
+        place.lat?.toString().orEmpty(),
+        place.lon?.toString().orEmpty(),
+        place.matchRadiusMeters.toString(),
     ).joinToString("|") { encodeField(it) }
 
     fun decode(value: String): SavedPlace? = runCatching {
         val fields = value.split('|')
-        if (fields.size != 4) return null
+        if (fields.size != 4 && fields.size != 7) return null
         SavedPlace(
             id = decodeField(fields[0]),
             name = decodeField(fields[1]),
             address = decodeField(fields[2]),
             defaultPurpose = decodeField(fields[3]),
+            lat = fields.getOrNull(4)?.let(::decodeField)?.toDoubleOrNull(),
+            lon = fields.getOrNull(5)?.let(::decodeField)?.toDoubleOrNull(),
+            matchRadiusMeters = fields.getOrNull(6)?.let(::decodeField)?.toIntOrNull()?.coerceIn(100, 1500) ?: 250,
         ).takeIf { it.id.isNotBlank() && it.name.isNotBlank() && it.address.isNotBlank() }
     }.getOrNull()
 

@@ -168,10 +168,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         LocationTrackingService.stop(getApplication())
     }
 
-    fun saveSettings(ratePerKm: Double, defaultPurpose: String) {
+    fun saveSettings(
+        ratePerKm: Double,
+        defaultPurpose: String,
+        driverName: String,
+        companyName: String,
+        vehicleName: String,
+        registrationPlate: String,
+    ) {
         viewModelScope.launch {
             app.settingsRepository.setRatePerKm(ratePerKm)
             app.settingsRepository.setDefaultPurpose(defaultPurpose)
+            app.settingsRepository.setReportProfile(
+                driverName = driverName,
+                companyName = companyName,
+                vehicleName = vehicleName,
+                registrationPlate = registrationPlate,
+            )
         }
     }
 

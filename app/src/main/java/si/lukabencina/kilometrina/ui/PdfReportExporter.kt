@@ -31,13 +31,21 @@ object PdfReportExporter {
     ) {
         val completedTrips = trips.filter { it.endTime != null }.sortedBy { it.startTime }
         val summary = ReportCalculator.summarize(completedTrips)
+        val vehicleSummary = completedTrips
+            .map { listOf(it.vehicleName, it.registrationPlate).filter(String::isNotBlank).joinToString(" • ") }
+            .filter(String::isNotBlank)
+            .distinct()
+            .joinToString(", ")
+            .ifBlank {
+                listOf(settings.vehicleName, settings.registrationPlate).filter(String::isNotBlank).joinToString(" • ").ifBlank { "—" }
+            }
         val document = PdfDocument()
         try {
             var pageNumber = 1
             var rowIndex = 0
             var page = startPage(document, pageNumber)
             var canvas = page.canvas
-            drawPageHeader(canvas, month, settings, pageNumber)
+            drawPageHeader(canvas, month, settings, vehicleSummary, pageNumber)
             var y = TABLE_TOP
             drawTableHeader(canvas, y)
             y += ROW_HEIGHT
@@ -49,7 +57,7 @@ object PdfReportExporter {
                     pageNumber += 1
                     page = startPage(document, pageNumber)
                     canvas = page.canvas
-                    drawPageHeader(canvas, month, settings, pageNumber)
+                    drawPageHeader(canvas, month, settings, vehicleSummary, pageNumber)
                     y = TABLE_TOP
                     drawTableHeader(canvas, y)
                     y += ROW_HEIGHT
@@ -65,7 +73,7 @@ object PdfReportExporter {
                 pageNumber += 1
                 page = startPage(document, pageNumber)
                 canvas = page.canvas
-                drawPageHeader(canvas, month, settings, pageNumber)
+                drawPageHeader(canvas, month, settings, vehicleSummary, pageNumber)
                 y = TABLE_TOP
             }
 
@@ -87,6 +95,7 @@ object PdfReportExporter {
         canvas: Canvas,
         month: YearMonth,
         settings: AppSettings,
+        vehicleSummary: String,
         pageNumber: Int,
     ) {
         val titlePaint = textPaint(20f, bold = true, color = Color.rgb(24, 29, 36))
@@ -100,11 +109,7 @@ object PdfReportExporter {
 
         drawMeta(canvas, "VOZNIK", settings.driverName.ifBlank { "—" }, MARGIN, 78f, 180f, metaLabelPaint, metaPaint)
         drawMeta(canvas, "PODJETJE", settings.companyName.ifBlank { "—" }, 230f, 78f, 220f, metaLabelPaint, metaPaint)
-        val vehicle = listOf(settings.vehicleName, settings.registrationPlate)
-            .filter { it.isNotBlank() }
-            .joinToString(" • ")
-            .ifBlank { "—" }
-        drawMeta(canvas, "VOZILO", vehicle, 494f, 78f, 250f, metaLabelPaint, metaPaint)
+        drawMeta(canvas, "VOZILA", vehicleSummary, 494f, 78f, 290f, metaLabelPaint, metaPaint)
 
         val pagePaint = textPaint(8f, color = Color.rgb(110, 116, 126)).apply { textAlign = Paint.Align.RIGHT }
         canvas.drawText("Stran $pageNumber", PAGE_WIDTH - MARGIN, 39f, pagePaint)
@@ -133,14 +138,15 @@ object PdfReportExporter {
     private data class Column(val title: String, val width: Float, val align: Paint.Align = Paint.Align.LEFT)
 
     private val columns = listOf(
-        Column("Datum", 58f),
-        Column("Relacija", 225f),
-        Column("Namen", 165f),
-        Column("km", 48f, Paint.Align.RIGHT),
-        Column("€/km", 48f, Paint.Align.RIGHT),
-        Column("Kilometrina", 68f, Paint.Align.RIGHT),
-        Column("Dodatni", 64f, Paint.Align.RIGHT),
-        Column("Skupaj", 70f, Paint.Align.RIGHT),
+        Column("Datum", 55f),
+        Column("Relacija", 185f),
+        Column("Namen", 115f),
+        Column("Vozilo", 90f),
+        Column("km", 45f, Paint.Align.RIGHT),
+        Column("€/km", 45f, Paint.Align.RIGHT),
+        Column("Kilometrina", 65f, Paint.Align.RIGHT),
+        Column("Dodatni", 60f, Paint.Align.RIGHT),
+        Column("Skupaj", 65f, Paint.Align.RIGHT),
     )
 
     private fun drawTableHeader(canvas: Canvas, y: Float) {
@@ -161,12 +167,14 @@ object PdfReportExporter {
             val background = Paint().apply { color = Color.rgb(249, 250, 252) }
             canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + ROW_HEIGHT, background)
         }
-        val paint = textPaint(7.4f, color = Color.rgb(38, 43, 51))
+        val paint = textPaint(7.2f, color = Color.rgb(38, 43, 51))
         val route = "${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}"
+        val vehicle = listOf(trip.vehicleName, trip.registrationPlate).filter(String::isNotBlank).joinToString(" • ")
         val values = listOf(
             formatDate(trip.startTime),
             route,
             trip.purpose,
+            vehicle,
             number(trip.distanceMeters / 1000.0, 1),
             number(trip.ratePerKm, 2),
             money(tripCompensation(trip)),
@@ -179,8 +187,7 @@ object PdfReportExporter {
             val column = columns[index]
             paint.textAlign = column.align
             val textX = if (column.align == Paint.Align.RIGHT) x + column.width - 5f else x + 5f
-            val maxWidth = column.width - 10f
-            canvas.drawText(fitText(values[index], maxWidth, paint), textX, y + 18f, paint)
+            canvas.drawText(fitText(values[index], column.width - 10f, paint), textX, y + 18f, paint)
             x += column.width
         }
 
@@ -193,12 +200,9 @@ object PdfReportExporter {
 
     private fun drawSummary(canvas: Canvas, y: Float, summary: ReportSummary) {
         val labelPaint = textPaint(8f, color = Color.rgb(93, 100, 111))
-        val valuePaint = textPaint(11f, bold = true, color = Color.rgb(29, 34, 42)).apply {
-            textAlign = Paint.Align.RIGHT
-        }
+        val valuePaint = textPaint(11f, bold = true, color = Color.rgb(29, 34, 42)).apply { textAlign = Paint.Align.RIGHT }
         val titlePaint = textPaint(10f, bold = true, color = Color.rgb(31, 36, 44))
         canvas.drawText("Povzetek", MARGIN, y, titlePaint)
-
         val items = listOf(
             "Vožnje" to summary.tripCount.toString(),
             "Kilometri" to "${number(summary.distanceKm, 1)} km",
@@ -242,8 +246,6 @@ object PdfReportExporter {
         return if (end > 0) clean.substring(0, end).trimEnd() + ellipsis else ellipsis
     }
 
-    private fun number(value: Double, decimals: Int): String =
-        String.format(locale, "%.${decimals}f", value)
-
+    private fun number(value: Double, decimals: Int): String = String.format(locale, "%.${decimals}f", value)
     private fun money(value: Double): String = String.format(locale, "%.2f €", value)
 }

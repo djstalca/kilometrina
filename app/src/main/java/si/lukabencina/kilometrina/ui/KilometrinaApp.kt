@@ -64,12 +64,16 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     uiState = uiState,
                     onStart = viewModel::startTrip,
                     onStop = viewModel::stopTrip,
+                    onResumeRecovered = viewModel::resumeRecoveredTrip,
+                    onFinishRecovered = viewModel::finishRecoveredTrip,
                     onOpenTrips = { selectedTabName = MainTab.Trips.name },
                 )
                 MainTab.Trips -> TripsScreen(
                     trips = uiState.trips,
+                    defaultRatePerKm = uiState.settings.ratePerKm,
                     onDeleteTrip = viewModel::deleteTrip,
                     onUpdateTrip = viewModel::updateTrip,
+                    onAddManualTrip = viewModel::addManualTrip,
                 )
                 MainTab.Settings -> SettingsScreen(
                     settings = uiState.settings,

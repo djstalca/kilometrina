@@ -21,6 +21,9 @@ data class TripEntity(
     val ratePerKm: Double = 0.43,
     val tollsCents: Int = 0,
     val parkingCents: Int = 0,
+    val vehicleId: String = "",
+    val vehicleName: String = "",
+    val registrationPlate: String = "",
 )
 
 @Entity(

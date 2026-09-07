@@ -95,7 +95,7 @@ object PdfReportExporter {
         val metaPaint = textPaint(9f, color = Color.rgb(32, 37, 45))
 
         canvas.drawText("Mesečni obračun kilometrine", MARGIN, 39f, titlePaint)
-        val monthText = month.atDay(1).format(monthFormatter).replaceFirstChar { it.uppercase(locale) }
+        val monthText = month.atDay(1).format(monthFormatter).replaceFirstChar { it.uppercase() }
         canvas.drawText(monthText, MARGIN, 57f, subtitlePaint)
 
         drawMeta(canvas, "VOZNIK", settings.driverName.ifBlank { "—" }, MARGIN, 78f, 180f, metaLabelPaint, metaPaint)

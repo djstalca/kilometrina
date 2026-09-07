@@ -20,6 +20,14 @@ object CsvExporter {
         val completed = trips.filter { it.endTime != null }.sortedBy { it.startTime }
         val summary = ReportCalculator.summarize(completed)
         val lines = mutableListOf<String>()
+        val vehicles = completed
+            .map { listOf(it.vehicleName, it.registrationPlate).filter(String::isNotBlank).joinToString(" • ") }
+            .filter(String::isNotBlank)
+            .distinct()
+            .ifEmpty {
+                listOf(listOf(settings.vehicleName, settings.registrationPlate).filter(String::isNotBlank).joinToString(" • "))
+                    .filter(String::isNotBlank)
+            }
 
         lines += metadata("Obračun", "Mesečni obračun kilometrine")
         month?.let {
@@ -28,8 +36,7 @@ object CsvExporter {
         }
         lines += metadata("Voznik", settings.driverName)
         lines += metadata("Podjetje", settings.companyName)
-        lines += metadata("Vozilo", settings.vehicleName)
-        lines += metadata("Registrska oznaka", settings.registrationPlate)
+        lines += metadata("Vozila", vehicles.joinToString(", "))
         lines += ""
 
         lines += listOf(
@@ -39,6 +46,8 @@ object CsvExporter {
             "Odhod",
             "Prihod",
             "Namen",
+            "Vozilo",
+            "Registrska oznaka",
             "Kilometri",
             "Postavka EUR/km",
             "Kilometrina EUR",
@@ -55,6 +64,8 @@ object CsvExporter {
                 csv(trip.startAddress),
                 csv(trip.endAddress.orEmpty()),
                 csv(trip.purpose),
+                csv(trip.vehicleName),
+                csv(trip.registrationPlate),
                 decimal(trip.distanceMeters / 1000.0),
                 decimal(trip.ratePerKm),
                 decimal(tripCompensation(trip)),

@@ -13,6 +13,10 @@ jobs:
 
     env:
       APPROVED_CERT_SHA256: AB175B9564EF6DE688416C0FDFD59A8AEE258A01396A449D5976FCE954F9F593
+      ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/kilometrina-upload.jks
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -32,21 +36,18 @@ jobs:
       - name: Verify signing secrets and certificate identity
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           test -n "$KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
-          test -n "$KEYSTORE_PASSWORD" || { echo "Missing ANDROID_KEYSTORE_PASSWORD"; exit 1; }
-          test -n "$KEY_ALIAS" || { echo "Missing ANDROID_KEY_ALIAS"; exit 1; }
-          test -n "$KEY_PASSWORD" || { echo "Missing ANDROID_KEY_PASSWORD"; exit 1; }
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/kilometrina-upload.jks"
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "Missing ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "Missing ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "Missing ANDROID_KEY_PASSWORD"; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
 
           ACTUAL_CERT_SHA256="$(
             keytool -list -v \
-              -keystore "$RUNNER_TEMP/kilometrina-upload.jks" \
-              -storepass "$KEYSTORE_PASSWORD" \
-              -alias "$KEY_ALIAS" \
+              -keystore "$ANDROID_KEYSTORE_PATH" \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+              -alias "$ANDROID_KEY_ALIAS" \
             | awk -F': ' '/SHA256:/{print $2; exit}' \
             | tr -d ':' \
             | tr '[:lower:]' '[:upper:]'
@@ -60,23 +61,15 @@ jobs:
           }
 
       - name: Run release unit tests
-        env: &signing_env
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/kilometrina-upload.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle --no-daemon --no-parallel :app:testReleaseUnitTest
 
       - name: Run release lint
-        env: *signing_env
         run: gradle --no-daemon --no-parallel :app:lintRelease
 
       - name: Build signed APK
-        env: *signing_env
         run: gradle --no-daemon --no-parallel :app:assembleRelease
 
       - name: Build signed AAB
-        env: *signing_env
         run: gradle --no-daemon --no-parallel :app:bundleRelease
 
       - name: Verify APK signing certificate

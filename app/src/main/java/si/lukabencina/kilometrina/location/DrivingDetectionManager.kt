@@ -23,17 +23,39 @@ object DrivingDetectionManager {
     }
 
     suspend fun enable(context: Context) {
-        check(hasPermission(context)) { "Dovoljenje za prepoznavanje aktivnosti ni odobreno." }
-        ActivityRecognition.getClient(context)
-            .requestActivityTransitionUpdates(buildRequest(), transitionPendingIntent(context))
-            .await()
+        if (Build.VERSION.SDK_INT >= 29 &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACTIVITY_RECOGNITION,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            error("Dovoljenje za prepoznavanje aktivnosti ni odobreno.")
+        }
+        try {
+            ActivityRecognition.getClient(context)
+                .requestActivityTransitionUpdates(buildRequest(), transitionPendingIntent(context))
+                .await()
+        } catch (error: SecurityException) {
+            throw IllegalStateException("Dovoljenje za prepoznavanje aktivnosti ni odobreno.", error)
+        }
     }
 
     suspend fun disable(context: Context) {
-        runCatching {
-            ActivityRecognition.getClient(context)
-                .removeActivityTransitionUpdates(transitionPendingIntent(context))
-                .await()
+        val canAccess = Build.VERSION.SDK_INT < 29 ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACTIVITY_RECOGNITION,
+            ) == PackageManager.PERMISSION_GRANTED
+        if (canAccess) {
+            try {
+                ActivityRecognition.getClient(context)
+                    .removeActivityTransitionUpdates(transitionPendingIntent(context))
+                    .await()
+            } catch (_: SecurityException) {
+                // Permission can be revoked between the check and the API call.
+            } catch (_: Throwable) {
+                // Best-effort cleanup; disabling should still clear local notifications/state.
+            }
         }
         DrivingSuggestionNotifications.cancelAll(context)
     }

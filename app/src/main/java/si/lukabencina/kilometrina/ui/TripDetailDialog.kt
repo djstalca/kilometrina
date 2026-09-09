@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,11 +36,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import si.lukabencina.kilometrina.data.LocationPointEntity
@@ -130,9 +133,21 @@ fun TripDetailDialog(
 
 @Composable
 private fun DetailLine(label: String, value: String, emphasized: Boolean = false) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.width(96.dp).padding(end = 12.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End,
+            fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium,
+        )
     }
 }
 
@@ -152,13 +167,15 @@ private fun RoutePreview(points: List<LocationPointEntity>) {
     val endColor = MaterialTheme.colorScheme.error
     val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.14f)
     val background = MaterialTheme.colorScheme.surfaceContainerHighest
+    val previewShape = RoundedCornerShape(20.dp)
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(270.dp)
-                .background(background, RoundedCornerShape(20.dp))
+                .clip(previewShape)
+                .background(background)
                 .pointerInput(sampled) {
                     detectTransformGestures { _, panChange, zoomChange, _ ->
                         zoom = (zoom * zoomChange).coerceIn(1f, 8f)

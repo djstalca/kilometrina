@@ -30,8 +30,20 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Build, test and lint
-        run: gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:bundleRelease
+      # Run build variants sequentially. Room KSP writes schema JSON to a shared
+      # schema directory; scheduling debug and release KSP in one Gradle graph
+      # can race and leave a partially written schema file.
+      - name: Build debug APK
+        run: gradle --no-daemon --no-parallel :app:assembleDebug
+
+      - name: Run unit tests
+        run: gradle --no-daemon --no-parallel :app:testDebugUnitTest
+
+      - name: Run Android lint
+        run: gradle --no-daemon --no-parallel :app:lintDebug
+
+      - name: Build release AAB
+        run: gradle --no-daemon --no-parallel :app:bundleRelease
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

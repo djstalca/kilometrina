@@ -42,6 +42,9 @@ jobs:
       - name: Run Android lint
         run: gradle --no-daemon --no-parallel :app:lintDebug
 
+      - name: Build unsigned release APK
+        run: gradle --no-daemon --no-parallel :app:assembleRelease
+
       - name: Build release AAB
         run: gradle --no-daemon --no-parallel :app:bundleRelease
 
@@ -50,6 +53,14 @@ jobs:
         with:
           name: kilometrina-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload unsigned release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kilometrina-release-apk-unsigned
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
 

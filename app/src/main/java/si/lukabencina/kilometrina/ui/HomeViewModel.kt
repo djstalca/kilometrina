@@ -136,13 +136,24 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             onStateChanged(StartState.Locating)
             runCatching {
+                val context = getApplication<Application>()
+                if (ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    error("Dovoli natančno lokacijo za beleženje vožnje.")
+                }
                 val request = CurrentLocationRequest.Builder()
                     .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
                     .setDurationMillis(15_000L)
                     .setMaxUpdateAgeMillis(2_000L)
                     .build()
-                val location: Location = fused.getCurrentLocation(request, null).await()
-                    ?: error("Trenutne lokacije ni bilo mogoče pridobiti.")
+                val location: Location = try {
+                    fused.getCurrentLocation(request, null).await()
+                } catch (error: SecurityException) {
+                    throw IllegalStateException("Dovoli natančno lokacijo za beleženje vožnje.", error)
+                } ?: error("Trenutne lokacije ni bilo mogoče pridobiti.")
                 if (!location.hasAccuracy() || location.accuracy > 50f) {
                     error("GPS signal je trenutno preslab (±${location.accuracy.toInt()} m). Premakni se na bolj odprto mesto in poskusi znova.")
                 }

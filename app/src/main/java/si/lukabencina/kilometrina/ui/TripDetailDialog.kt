@@ -2,11 +2,14 @@ package si.lukabencina.kilometrina.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -19,8 +22,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CenterFocusStrong
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ZoomIn
-import androidx.compose.material.icons.outlined.ZoomOut
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -29,10 +30,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,14 +43,26 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
+import org.maplibre.compose.camera.rememberCameraState
+import org.maplibre.compose.expressions.dsl.const
+import org.maplibre.compose.layers.CircleLayer
+import org.maplibre.compose.layers.LineLayer
+import org.maplibre.compose.map.MapOptions
+import org.maplibre.compose.map.MaplibreMap
+import org.maplibre.compose.map.RenderOptions
+import org.maplibre.compose.sources.GeoJsonData
+import org.maplibre.compose.sources.rememberGeoJsonSource
+import org.maplibre.compose.style.BaseStyle
+import org.maplibre.spatialk.geojson.BoundingBox
 import si.lukabencina.kilometrina.data.LocationPointEntity
 import si.lukabencina.kilometrina.data.TripEntity
 import java.util.Locale
+import kotlin.math.ceil
 import kotlin.math.ln
 import kotlin.math.min
 import kotlin.math.tan
@@ -120,10 +134,10 @@ fun TripDetailDialog(
                         )
                     }
                     else -> {
-                        RoutePreview(routeState.points)
+                        RouteMap(routeState.points)
                         val averageAccuracy = routeState.points.map { it.accuracyMeters }.average()
                         Text(
-                            "${routeState.points.size} GPS točk • povprečna natančnost ±${averageAccuracy.toInt()} m • povleci ali povečaj z dvema prstoma",
+                            "${routeState.points.size} GPS točk • povprečna natančnost ±${averageAccuracy.toInt()} m",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -137,10 +151,7 @@ fun TripDetailDialog(
 @Composable
 private fun RouteDetailLine(value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            "Relacija",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text("Relacija", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             value,
             modifier = Modifier.fillMaxWidth(),
@@ -171,109 +182,209 @@ private fun DetailLine(label: String, value: String, emphasized: Boolean = false
 }
 
 @Composable
-private fun RoutePreview(points: List<LocationPointEntity>) {
-    val sampled = remember(points) {
-        val valid = points
-            .asSequence()
-            .filter { it.lat.isFinite() && it.lon.isFinite() }
-            .filter { it.lat in -85.05112878..85.05112878 && it.lon in -180.0..180.0 }
-            .sortedBy { it.timestamp }
-            .toList()
-        if (valid.size <= 2_000) valid else {
-            val step = ((valid.size - 1) / 1_999.0).toInt().coerceAtLeast(1)
-            valid.filterIndexed { index, _ -> index % step == 0 || index == valid.lastIndex }
-        }
+private fun RouteMap(points: List<LocationPointEntity>) {
+    val sampled = remember(points) { sanitizeAndSampleRoute(points) }
+    if (sampled.size < 2) {
+        Text("GPS trasa nima dovolj veljavnih točk.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
     }
-    var zoom by remember(points) { mutableFloatStateOf(1f) }
-    var pan by remember(points) { mutableStateOf(Offset.Zero) }
+
+    val routeGeoJson = remember(sampled) { lineGeoJson(sampled) }
+    val startGeoJson = remember(sampled) { pointGeoJson(sampled.first()) }
+    val endGeoJson = remember(sampled) { pointGeoJson(sampled.last()) }
+    val bounds = remember(sampled) { routeBounds(sampled) }
+    val camera = rememberCameraState()
+    val scope = rememberCoroutineScope()
+    var mapReady by remember(sampled) { mutableStateOf(false) }
+    var mapFailed by remember(sampled) { mutableStateOf(false) }
+    val shape = RoundedCornerShape(20.dp)
     val routeColor = MaterialTheme.colorScheme.primary
     val startColor = MaterialTheme.colorScheme.tertiary
     val endColor = MaterialTheme.colorScheme.error
-    val background = MaterialTheme.colorScheme.surfaceContainerHighest
-    val previewShape = RoundedCornerShape(20.dp)
+    val markerStroke = MaterialTheme.colorScheme.surface
+    val styleUri = if (isSystemInDarkTheme()) {
+        "https://tiles.openfreemap.org/styles/dark"
+    } else {
+        "https://tiles.openfreemap.org/styles/liberty"
+    }
+
+    suspend fun fitRoute() {
+        camera.awaitViewport()
+        camera.jumpTo(bounds, padding = PaddingValues(28.dp))
+    }
+
+    LaunchedEffect(sampled, mapReady) {
+        if (mapReady) fitRoute()
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Canvas(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(270.dp)
-                .clip(previewShape)
-                .background(background)
-                .pointerInput(sampled) {
-                    detectTransformGestures { _, panChange, zoomChange, _ ->
-                        zoom = (zoom * zoomChange).coerceIn(1f, 8f)
-                        pan = Offset(
-                            x = (pan.x + panChange.x).coerceIn(-size.width * 2f, size.width * 2f),
-                            y = (pan.y + panChange.y).coerceIn(-size.height * 2f, size.height * 2f),
-                        )
-                    }
-                },
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
         ) {
-            if (sampled.size < 2) return@Canvas
+            if (mapFailed) {
+                RouteCanvasFallback(sampled, Modifier.fillMaxSize())
+            } else {
+                MaplibreMap(
+                    modifier = Modifier.fillMaxSize(),
+                    baseStyle = BaseStyle.Uri(styleUri),
+                    cameraState = camera,
+                    options = MapOptions(
+                        renderOptions = RenderOptions(
+                            renderMode = RenderOptions.RenderMode.TextureView,
+                            maximumFps = 60,
+                        ),
+                    ),
+                    onMapLoadFinished = {
+                        mapFailed = false
+                        mapReady = true
+                    },
+                    onMapLoadFailed = {
+                        mapReady = false
+                        mapFailed = true
+                    },
+                ) {
+                    val routeSource = rememberGeoJsonSource(GeoJsonData.JsonString(routeGeoJson))
+                    val startSource = rememberGeoJsonSource(GeoJsonData.JsonString(startGeoJson))
+                    val endSource = rememberGeoJsonSource(GeoJsonData.JsonString(endGeoJson))
 
-            fun mercatorX(lon: Double): Double = Math.toRadians(lon)
-            fun mercatorY(lat: Double): Double {
-                val latRadians = Math.toRadians(lat.coerceIn(-85.05112878, 85.05112878))
-                return ln(tan(Math.PI / 4.0 + latRadians / 2.0))
-            }
-
-            val xs = sampled.map { mercatorX(it.lon) }
-            val ys = sampled.map { mercatorY(it.lat) }
-            val minX = xs.minOrNull() ?: return@Canvas
-            val maxX = xs.maxOrNull() ?: return@Canvas
-            val minY = ys.minOrNull() ?: return@Canvas
-            val maxY = ys.maxOrNull() ?: return@Canvas
-            val dx = (maxX - minX).coerceAtLeast(1e-9)
-            val dy = (maxY - minY).coerceAtLeast(1e-9)
-            val margin = 28f
-            val usableWidth = (size.width - margin * 2f).coerceAtLeast(1f)
-            val usableHeight = (size.height - margin * 2f).coerceAtLeast(1f)
-
-            // One shared scale for X and Y keeps the geographic shape intact.
-            val fitScale = min(usableWidth / dx.toFloat(), usableHeight / dy.toFloat())
-            val routeWidth = dx.toFloat() * fitScale
-            val routeHeight = dy.toFloat() * fitScale
-            val originX = (size.width - routeWidth) / 2f
-            val originY = (size.height - routeHeight) / 2f
-            val center = Offset(size.width / 2f, size.height / 2f)
-
-            fun projected(index: Int): Offset {
-                val baseX = originX + (xs[index] - minX).toFloat() * fitScale
-                val baseY = originY + (maxY - ys[index]).toFloat() * fitScale
-                return Offset(
-                    x = center.x + (baseX - center.x) * zoom + pan.x,
-                    y = center.y + (baseY - center.y) * zoom + pan.y,
-                )
-            }
-
-            clipRect {
-                val path = Path()
-                val first = projected(0)
-                path.moveTo(first.x, first.y)
-                for (i in 1 until sampled.size) {
-                    val p = projected(i)
-                    path.lineTo(p.x, p.y)
+                    LineLayer(
+                        id = "trip-route-line",
+                        source = routeSource,
+                        color = const(routeColor),
+                        width = const(5.dp),
+                    )
+                    CircleLayer(
+                        id = "trip-route-start",
+                        source = startSource,
+                        radius = const(7.dp),
+                        color = const(startColor),
+                        strokeColor = const(markerStroke),
+                        strokeWidth = const(2.dp),
+                    )
+                    CircleLayer(
+                        id = "trip-route-end",
+                        source = endSource,
+                        radius = const(7.dp),
+                        color = const(endColor),
+                        strokeColor = const(markerStroke),
+                        strokeWidth = const(2.dp),
+                    )
                 }
-                drawPath(path, routeColor, style = Stroke(width = 5f))
-                drawCircle(startColor, radius = 8f, center = first)
-                drawCircle(endColor, radius = 8f, center = projected(sampled.lastIndex))
             }
         }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { zoom = (zoom / 1.5f).coerceAtLeast(1f) }) {
-                Icon(Icons.Outlined.ZoomOut, contentDescription = "Pomanjšaj traso")
+            Text(
+                if (mapFailed) "Zemljevid ni na voljo – prikazana je lokalna GPS trasa." else "Povleci ali povečaj z dvema prstoma.",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!mapFailed) {
+                IconButton(
+                    onClick = {
+                        scope.launch { fitRoute() }
+                    },
+                ) {
+                    Icon(Icons.Outlined.CenterFocusStrong, contentDescription = "Prikaži celotno traso")
+                }
             }
-            IconButton(onClick = { zoom = 1f; pan = Offset.Zero }) {
-                Icon(Icons.Outlined.CenterFocusStrong, contentDescription = "Prikaži celotno traso")
+        }
+    }
+}
+
+private fun sanitizeAndSampleRoute(points: List<LocationPointEntity>): List<LocationPointEntity> {
+    val valid = points
+        .asSequence()
+        .filter { it.lat.isFinite() && it.lon.isFinite() }
+        .filter { it.lat in -85.05112878..85.05112878 && it.lon in -180.0..180.0 }
+        .sortedBy { it.timestamp }
+        .toList()
+    if (valid.size <= 2_000) return valid
+
+    val step = ceil((valid.size - 1) / 1_999.0).toInt().coerceAtLeast(1)
+    return valid.filterIndexed { index, _ -> index % step == 0 || index == valid.lastIndex }
+}
+
+private fun lineGeoJson(points: List<LocationPointEntity>): String {
+    val coordinates = points.joinToString(",") { "[${it.lon},${it.lat}]" }
+    return """{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[$coordinates]}}"""
+}
+
+private fun pointGeoJson(point: LocationPointEntity): String =
+    """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${point.lon},${point.lat}]}}"""
+
+private fun routeBounds(points: List<LocationPointEntity>): BoundingBox {
+    val west = points.minOf { it.lon }
+    val east = points.maxOf { it.lon }
+    val south = points.minOf { it.lat }
+    val north = points.maxOf { it.lat }
+    val lonPadding = ((east - west) * 0.04).coerceAtLeast(0.0005)
+    val latPadding = ((north - south) * 0.04).coerceAtLeast(0.0005)
+    return BoundingBox(
+        west = (west - lonPadding).coerceAtLeast(-180.0),
+        south = (south - latPadding).coerceAtLeast(-85.05112878),
+        east = (east + lonPadding).coerceAtMost(180.0),
+        north = (north + latPadding).coerceAtMost(85.05112878),
+    )
+}
+
+@Composable
+private fun RouteCanvasFallback(points: List<LocationPointEntity>, modifier: Modifier = Modifier) {
+    val routeColor = MaterialTheme.colorScheme.primary
+    val startColor = MaterialTheme.colorScheme.tertiary
+    val endColor = MaterialTheme.colorScheme.error
+
+    Canvas(modifier = modifier) {
+        if (points.size < 2) return@Canvas
+
+        fun mercatorX(lon: Double): Double = Math.toRadians(lon)
+        fun mercatorY(lat: Double): Double {
+            val latRadians = Math.toRadians(lat.coerceIn(-85.05112878, 85.05112878))
+            return ln(tan(Math.PI / 4.0 + latRadians / 2.0))
+        }
+
+        val xs = points.map { mercatorX(it.lon) }
+        val ys = points.map { mercatorY(it.lat) }
+        val minX = xs.minOrNull() ?: return@Canvas
+        val maxX = xs.maxOrNull() ?: return@Canvas
+        val minY = ys.minOrNull() ?: return@Canvas
+        val maxY = ys.maxOrNull() ?: return@Canvas
+        val dx = (maxX - minX).coerceAtLeast(1e-9)
+        val dy = (maxY - minY).coerceAtLeast(1e-9)
+        val margin = 28f
+        val usableWidth = (size.width - margin * 2f).coerceAtLeast(1f)
+        val usableHeight = (size.height - margin * 2f).coerceAtLeast(1f)
+        val fitScale = min(usableWidth / dx.toFloat(), usableHeight / dy.toFloat())
+        val routeWidth = dx.toFloat() * fitScale
+        val routeHeight = dy.toFloat() * fitScale
+        val originX = (size.width - routeWidth) / 2f
+        val originY = (size.height - routeHeight) / 2f
+
+        fun projected(index: Int): Offset = Offset(
+            x = originX + (xs[index] - minX).toFloat() * fitScale,
+            y = originY + (maxY - ys[index]).toFloat() * fitScale,
+        )
+
+        clipRect {
+            val path = Path()
+            val first = projected(0)
+            path.moveTo(first.x, first.y)
+            for (i in 1 until points.size) {
+                val p = projected(i)
+                path.lineTo(p.x, p.y)
             }
-            IconButton(onClick = { zoom = (zoom * 1.5f).coerceAtMost(8f) }) {
-                Icon(Icons.Outlined.ZoomIn, contentDescription = "Povečaj traso")
-            }
+            drawPath(path, routeColor, style = Stroke(width = 5f))
+            drawCircle(startColor, radius = 8f, center = first)
+            drawCircle(endColor, radius = 8f, center = projected(points.lastIndex))
         }
     }
 }

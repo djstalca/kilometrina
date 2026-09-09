@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,7 +49,9 @@ import androidx.compose.ui.window.Dialog
 import si.lukabencina.kilometrina.data.LocationPointEntity
 import si.lukabencina.kilometrina.data.TripEntity
 import java.util.Locale
-import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.min
+import kotlin.math.tan
 
 @Composable
 fun TripDetailDialog(
@@ -88,7 +91,7 @@ fun TripDetailDialog(
                     shape = MaterialTheme.shapes.large,
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DetailLine("Relacija", "${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}")
+                        RouteDetailLine("${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}")
                         DetailLine("Razdalja", formatKm(trip.distanceMeters))
                         DetailLine("Postavka", String.format(Locale.forLanguageTag("sl-SI"), "%.2f €/km", trip.ratePerKm))
                         DetailLine("Kilometrina", formatMoney(tripCompensation(trip)))
@@ -132,6 +135,22 @@ fun TripDetailDialog(
 }
 
 @Composable
+private fun RouteDetailLine(value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "Relacija",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
 private fun DetailLine(label: String, value: String, emphasized: Boolean = false) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -154,9 +173,14 @@ private fun DetailLine(label: String, value: String, emphasized: Boolean = false
 @Composable
 private fun RoutePreview(points: List<LocationPointEntity>) {
     val sampled = remember(points) {
-        val valid = points.filter { it.lat.isFinite() && it.lon.isFinite() }
+        val valid = points
+            .asSequence()
+            .filter { it.lat.isFinite() && it.lon.isFinite() }
+            .filter { it.lat in -85.05112878..85.05112878 && it.lon in -180.0..180.0 }
+            .sortedBy { it.timestamp }
+            .toList()
         if (valid.size <= 2_000) valid else {
-            val step = (valid.size / 2_000).coerceAtLeast(1)
+            val step = ((valid.size - 1) / 1_999.0).toInt().coerceAtLeast(1)
             valid.filterIndexed { index, _ -> index % step == 0 || index == valid.lastIndex }
         }
     }
@@ -165,7 +189,6 @@ private fun RoutePreview(points: List<LocationPointEntity>) {
     val routeColor = MaterialTheme.colorScheme.primary
     val startColor = MaterialTheme.colorScheme.tertiary
     val endColor = MaterialTheme.colorScheme.error
-    val gridColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.14f)
     val background = MaterialTheme.colorScheme.surfaceContainerHighest
     val previewShape = RoundedCornerShape(20.dp)
 
@@ -186,46 +209,55 @@ private fun RoutePreview(points: List<LocationPointEntity>) {
                     }
                 },
         ) {
-            for (i in 1..4) {
-                val x = size.width * i / 5f
-                val y = size.height * i / 5f
-                drawLine(gridColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-                drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-            }
             if (sampled.size < 2) return@Canvas
 
-            val midLatRadians = sampled.map { it.lat }.average() * Math.PI / 180.0
-            val lonScale = cos(midLatRadians).coerceAtLeast(0.1)
-            val xs = sampled.map { it.lon * lonScale }
-            val ys = sampled.map { it.lat }
+            fun mercatorX(lon: Double): Double = Math.toRadians(lon)
+            fun mercatorY(lat: Double): Double {
+                val latRadians = Math.toRadians(lat.coerceIn(-85.05112878, 85.05112878))
+                return ln(tan(Math.PI / 4.0 + latRadians / 2.0))
+            }
+
+            val xs = sampled.map { mercatorX(it.lon) }
+            val ys = sampled.map { mercatorY(it.lat) }
             val minX = xs.minOrNull() ?: return@Canvas
             val maxX = xs.maxOrNull() ?: return@Canvas
             val minY = ys.minOrNull() ?: return@Canvas
             val maxY = ys.maxOrNull() ?: return@Canvas
-            val dx = (maxX - minX).coerceAtLeast(0.000001)
-            val dy = (maxY - minY).coerceAtLeast(0.000001)
-            val margin = 24f
+            val dx = (maxX - minX).coerceAtLeast(1e-9)
+            val dy = (maxY - minY).coerceAtLeast(1e-9)
+            val margin = 28f
+            val usableWidth = (size.width - margin * 2f).coerceAtLeast(1f)
+            val usableHeight = (size.height - margin * 2f).coerceAtLeast(1f)
+
+            // One shared scale for X and Y keeps the geographic shape intact.
+            val fitScale = min(usableWidth / dx.toFloat(), usableHeight / dy.toFloat())
+            val routeWidth = dx.toFloat() * fitScale
+            val routeHeight = dy.toFloat() * fitScale
+            val originX = (size.width - routeWidth) / 2f
+            val originY = (size.height - routeHeight) / 2f
             val center = Offset(size.width / 2f, size.height / 2f)
 
             fun projected(index: Int): Offset {
-                val baseX = margin + ((xs[index] - minX) / dx).toFloat() * (size.width - 2 * margin)
-                val baseY = size.height - margin - ((ys[index] - minY) / dy).toFloat() * (size.height - 2 * margin)
+                val baseX = originX + (xs[index] - minX).toFloat() * fitScale
+                val baseY = originY + (maxY - ys[index]).toFloat() * fitScale
                 return Offset(
                     x = center.x + (baseX - center.x) * zoom + pan.x,
                     y = center.y + (baseY - center.y) * zoom + pan.y,
                 )
             }
 
-            val path = Path()
-            val first = projected(0)
-            path.moveTo(first.x, first.y)
-            for (i in 1 until sampled.size) {
-                val p = projected(i)
-                path.lineTo(p.x, p.y)
+            clipRect {
+                val path = Path()
+                val first = projected(0)
+                path.moveTo(first.x, first.y)
+                for (i in 1 until sampled.size) {
+                    val p = projected(i)
+                    path.lineTo(p.x, p.y)
+                }
+                drawPath(path, routeColor, style = Stroke(width = 5f))
+                drawCircle(startColor, radius = 8f, center = first)
+                drawCircle(endColor, radius = 8f, center = projected(sampled.lastIndex))
             }
-            drawPath(path, routeColor, style = Stroke(width = 5f))
-            drawCircle(startColor, radius = 8f, center = first)
-            drawCircle(endColor, radius = 8f, center = projected(sampled.lastIndex))
         }
 
         Row(

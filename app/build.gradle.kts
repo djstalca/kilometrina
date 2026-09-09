@@ -106,6 +106,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.4.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
+    implementation("org.maplibre.compose:maplibre-compose:0.15.0")
+    runtimeOnly("org.maplibre.compose:maplibre-compose-runtime-opengl-android:0.15.0")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }

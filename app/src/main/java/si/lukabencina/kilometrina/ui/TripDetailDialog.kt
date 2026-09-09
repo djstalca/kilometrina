@@ -234,7 +234,7 @@ private fun RouteMap(points: List<LocationPointEntity>) {
                     cameraState = camera,
                     options = MapOptions(
                         renderOptions = RenderOptions(
-                            renderMode = RenderOptions.RenderMode.TextureView,
+                            preferredRenderMode = RenderOptions.RenderMode.Texture,
                             maximumFps = 60,
                         ),
                     ),

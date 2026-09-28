@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.MainActivity
 import si.lukabencina.kilometrina.R
+import si.lukabencina.kilometrina.quick.KilometrinaWidgetProvider
 import java.util.Locale
 
 class LocationTrackingService : Service() {
@@ -116,6 +117,7 @@ class LocationTrackingService : Service() {
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
             )
             requestLocationUpdates()
+            KilometrinaWidgetProvider.requestUpdate(this@LocationTrackingService)
         }
     }
 
@@ -181,6 +183,7 @@ class LocationTrackingService : Service() {
     private suspend fun finishTracking() {
         repository.finishTrip(lastLocation)
         activeTripId = null
+        KilometrinaWidgetProvider.requestUpdate(this@LocationTrackingService)
         TrackingDiagnostics.trackingStopped()
         ServiceCompat.stopForeground(this@LocationTrackingService, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()

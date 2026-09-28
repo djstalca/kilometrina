@@ -2,6 +2,9 @@ package si.lukabencina.kilometrina.ui
 
 import android.app.Application
 import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
+import java.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +21,8 @@ data class TripRouteUiState(
     val points: List<LocationPointEntity> = emptyList(),
     val attachments: List<TripAttachmentEntity> = emptyList(),
     val message: String? = null,
+    val openAttachmentUri: Uri? = null,
+    val openAttachmentMimeType: String? = null,
 )
 
 class TripDetailViewModel(application: Application) : AndroidViewModel(application) {
@@ -54,6 +59,30 @@ class TripDetailViewModel(application: Application) : AndroidViewModel(applicati
                 .onSuccess { loadFresh(tripId, "Priloga je odstranjena.") }
                 .onFailure { _state.value = _state.value.copy(message = it.message ?: "Brisanje priloge ni uspelo.") }
         }
+    }
+
+    fun openAttachment(attachment: TripAttachmentEntity) {
+        viewModelScope.launch {
+            runCatching {
+                val app = getApplication<Application>()
+                val dir = File(app.cacheDir, "attachments").apply { mkdirs() }
+                val safeName = attachment.displayName.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(120).ifBlank { "priloga" }
+                val file = File(dir, attachment.id.toString() + "-" + safeName)
+                file.writeBytes(Base64.getDecoder().decode(attachment.contentBase64))
+                FileProvider.getUriForFile(app, app.packageName + ".fileprovider", file)
+            }.onSuccess { uri ->
+                _state.value = _state.value.copy(
+                    openAttachmentUri = uri,
+                    openAttachmentMimeType = attachment.mimeType,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(message = it.message ?: "Priloge ni bilo mogoče odpreti.")
+            }
+        }
+    }
+
+    fun consumeOpenAttachment() {
+        _state.value = _state.value.copy(openAttachmentUri = null, openAttachmentMimeType = null)
     }
 
     fun clearMessage() {

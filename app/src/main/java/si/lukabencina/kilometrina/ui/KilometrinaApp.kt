@@ -85,7 +85,6 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     onUpdateTrip = viewModel::updateTrip,
                     onAddManualTrip = viewModel::addManualTrip,
                     onAddAttachment = viewModel::addAttachment,
-                    onDeleteAttachment = viewModel::deleteAttachment,
                 )
                 MainTab.Reports -> ReportsScreen(
                     trips = uiState.trips,

@@ -20,8 +20,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -71,6 +74,8 @@ import kotlin.math.tan
 fun TripDetailDialog(
     trip: TripEntity,
     routeState: TripRouteUiState,
+    onAddAttachment: () -> Unit = {},
+    onDeleteAttachment: (Long) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -114,7 +119,51 @@ fun TripDetailDialog(
                         DetailLine("Skupaj", formatMoney(tripTotalCost(trip)), emphasized = true)
                         val vehicle = listOf(trip.vehicleName, trip.registrationPlate).filter { it.isNotBlank() }.joinToString(" • ")
                         if (vehicle.isNotBlank()) DetailLine("Vozilo", vehicle)
+                        DetailLine("Vrsta", if (trip.tripType == "PRIVATE") "Zasebna" else "Službena")
+                        if (trip.gpsQuality.isNotBlank()) {
+                            DetailLine("GPS zapis", gpsQualityLabel(trip.gpsQuality))
+                        }
                     }
+                }
+
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Priloge", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Button(onClick = onAddAttachment) {
+                        Icon(Icons.Outlined.AttachFile, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Dodaj")
+                    }
+                }
+                if (routeState.attachments.isEmpty()) {
+                    Text("Ni dodanih računov ali drugih prilog.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    routeState.attachments.forEach { attachment ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(attachment.displayName, fontWeight = FontWeight.Medium)
+                                Text(
+                                    attachment.mimeType,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(onClick = { onDeleteAttachment(attachment.id) }) {
+                                Icon(Icons.Outlined.Delete, contentDescription = "Odstrani prilogo")
+                            }
+                        }
+                    }
+                }
+                routeState.message?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
 
                 HorizontalDivider()
@@ -387,4 +436,14 @@ private fun RouteCanvasFallback(points: List<LocationPointEntity>, modifier: Mod
             drawCircle(endColor, radius = 8f, center = projected(points.lastIndex))
         }
     }
+}
+
+
+private fun gpsQualityLabel(value: String): String = when (value) {
+    "GOOD" -> "Dober"
+    "FAIR" -> "Sprejemljiv"
+    "POOR" -> "Slab – preveri traso"
+    "MISSING" -> "Manjkajoč"
+    "MANUAL" -> "Ročna vožnja"
+    else -> value
 }

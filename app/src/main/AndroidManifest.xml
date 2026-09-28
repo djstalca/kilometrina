@@ -72,6 +72,14 @@
             android:exported="false" />
 
         <receiver
+            android:name=".location.StartBusinessSuggestionReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".location.PrivateDrivingSuggestionReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".location.DrivingDetectionBootReceiver"
             android:enabled="true"
             android:exported="false">

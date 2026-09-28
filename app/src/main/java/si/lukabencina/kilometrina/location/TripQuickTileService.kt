@@ -9,7 +9,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import si.lukabencina.kilometrina.KilometrinaApplication
 
 class TripQuickTileService : TileService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -43,9 +42,6 @@ class TripQuickTileService : TileService() {
     }
 
     private fun refresh() {
-        val active = (application as? KilometrinaApplication)
-            ?.runCatching { tripRepository }
-            ?.getOrNull()
         qsTile?.apply {
             state = if (LocationTrackingService.isRunning) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
             label = if (LocationTrackingService.isRunning) "Končaj vožnjo" else "Začni vožnjo"

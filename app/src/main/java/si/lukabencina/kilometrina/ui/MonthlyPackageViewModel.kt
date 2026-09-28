@@ -2,6 +2,8 @@ package si.lukabencina.kilometrina.ui
 
 import android.app.Application
 import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import java.time.YearMonth
@@ -19,6 +21,7 @@ data class MonthlyPackageUiState(
     val working: Boolean = false,
     val message: String? = null,
     val isError: Boolean = false,
+    val shareUri: Uri? = null,
 )
 
 class MonthlyPackageViewModel(application: Application) : AndroidViewModel(application) {
@@ -48,6 +51,43 @@ class MonthlyPackageViewModel(application: Application) : AndroidViewModel(appli
                 )
             }
         }
+    }
+
+    fun share(month: YearMonth, trips: List<TripEntity>, settings: AppSettings) {
+        if (mutableState.value.working) return
+        viewModelScope.launch {
+            mutableState.value = MonthlyPackageUiState(working = true)
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val business = trips.filter { it.endTime != null && it.tripType != "PRIVATE" }
+                    val attachments = business.flatMap { app.tripRepository.getAttachments(it.id) }
+                    val dir = File(getApplication<Application>().cacheDir, "share").apply { mkdirs() }
+                    val file = File(dir, "kilometrina-" + month + "-oddaja.zip")
+                    file.outputStream().use { output ->
+                        MonthlyPackageExporter.write(output, business, month, settings, attachments)
+                    }
+                    FileProvider.getUriForFile(
+                        getApplication(),
+                        getApplication<Application>().packageName + ".fileprovider",
+                        file,
+                    )
+                }
+            }.onSuccess { uri ->
+                mutableState.value = MonthlyPackageUiState(
+                    message = "Paket je pripravljen za deljenje.",
+                    shareUri = uri,
+                )
+            }.onFailure {
+                mutableState.value = MonthlyPackageUiState(
+                    message = it.message ?: "Priprava paketa ni uspela.",
+                    isError = true,
+                )
+            }
+        }
+    }
+
+    fun consumeShareUri() {
+        mutableState.value = mutableState.value.copy(shareUri = null)
     }
 
     fun clearMessage() {

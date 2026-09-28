@@ -80,13 +80,17 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     savedPlaces = uiState.savedPlaces,
                     recentLocations = uiState.recentLocations,
                     vehicleState = uiState.vehicleState,
+                    attachments = uiState.attachments,
                     onDeleteTrip = viewModel::deleteTrip,
                     onUpdateTrip = viewModel::updateTrip,
                     onAddManualTrip = viewModel::addManualTrip,
+                    onAddAttachment = viewModel::addAttachment,
+                    onDeleteAttachment = viewModel::deleteAttachment,
                 )
                 MainTab.Reports -> ReportsScreen(
                     trips = uiState.trips,
                     settings = uiState.settings,
+                    attachments = uiState.attachments,
                 )
                 MainTab.Data -> BackupScreen(
                     tripCount = uiState.trips.count { it.endTime != null },
@@ -99,6 +103,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     vehicleState = uiState.vehicleState,
                     onSave = viewModel::saveSettings,
                     onAutoDetectionEnabled = viewModel::setAutoDetectionEnabled,
+                    onCalendarIntegrationEnabled = viewModel::setCalendarIntegrationEnabled,
                     onSavePlace = viewModel::savePlace,
                     onDeletePlace = viewModel::deletePlace,
                     onSaveVehicle = viewModel::saveVehicle,

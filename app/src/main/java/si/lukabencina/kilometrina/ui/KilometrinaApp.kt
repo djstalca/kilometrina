@@ -94,6 +94,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                 MainTab.Data -> BackupScreen(
                     tripCount = uiState.trips.count { it.endTime != null },
                     savedPlaceCount = uiState.savedPlaces.size,
+                    attachmentCount = uiState.attachments.size,
                     hasActiveTrip = uiState.activeTrip != null,
                 )
                 MainTab.Settings -> SettingsScreen(

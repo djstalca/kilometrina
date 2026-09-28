@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Kilometrina</string>
+    <string name="widget_description">Hiter začetek ali zaključek službene vožnje</string>
 </resources>

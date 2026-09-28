@@ -23,6 +23,12 @@
         android:theme="@style/Theme.Kilometrina">
 
         <activity
+            android:name=".quick.QuickTripActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Kilometrina.Quick" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
@@ -35,6 +41,28 @@
             android:name=".location.LocationTrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <service
+            android:name=".quick.QuickTripTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_location"
+            android:label="Kilometrina"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".quick.QuickTripWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_trip_widget_info" />
+        </receiver>
 
         <receiver
             android:name=".location.DrivingTransitionReceiver"

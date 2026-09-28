@@ -99,6 +99,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     vehicleState = uiState.vehicleState,
                     onSave = viewModel::saveSettings,
                     onAutoDetectionEnabled = viewModel::setAutoDetectionEnabled,
+                    onCalendarSuggestionsEnabled = viewModel::setCalendarSuggestionsEnabled,
                     onSavePlace = viewModel::savePlace,
                     onDeletePlace = viewModel::deletePlace,
                     onSaveVehicle = viewModel::saveVehicle,

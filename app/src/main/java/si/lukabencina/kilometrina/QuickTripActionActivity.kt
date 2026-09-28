@@ -78,6 +78,7 @@ class QuickTripActionActivity : ComponentActivity() {
         val id = app.tripRepository.startTrip(
             location = location,
             purpose = purpose,
+            description = "",
             ratePerKm = settings.ratePerKm,
             vehicle = vehicle,
             tripKind = kind,

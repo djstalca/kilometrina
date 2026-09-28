@@ -1,12 +1,12 @@
 # Google Play Data Safety – delovni list
 
-Ta dokument opisuje dejansko vedenje aplikacije Kilometrina 1.0.0 in služi kot osnova pri izpolnjevanju obrazca Data safety v Play Console.
+Ta dokument opisuje dejansko vedenje aplikacije Kilometrina 1.1.0 in služi kot osnova pri izpolnjevanju obrazca Data safety v Play Console.
 
 ## Povzetek
 
 - Aplikacija nima lastnega backend strežnika.
 - Aplikacija nima analitike, oglasov ali crash-reporting SDK-ja, ki bi pošiljal podatke razvijalcu.
-- Lokacija, GPS točke, vožnje, stroški, vozila in profil se obdelujejo lokalno.
+- Lokacija, GPS točke, vožnje, stroški, vozila, profil, dodane priloge in opcijski podatki koledarja se obdelujejo lokalno.
 - Lokalni crash zapis ostane na napravi in se ne pošilja razvijalcu.
 - Ročni JSON backup ustvari uporabnik in sam izbere cilj datoteke.
 - Android Auto Backup/device transfer upravlja operacijski sistem oziroma uporabnikov sistemski ponudnik backupa.
@@ -31,6 +31,16 @@ Uporablja se samo za lokalni predlog »verjetno si začel/končal vožnjo«.
 Uporabnik lahko lokalno vnese ime voznika in podjetje za poročila.  
 **Poslano razvijalcu:** NE.
 
+### Calendar
+
+**Calendar events:** samo če uporabnik prostovoljno vključi povezavo s koledarjem in odobri dovoljenje za branje koledarja. Aplikacija lokalno poišče časovno ujemajoč se dogodek za predlog namena poti.  
+**Poslano razvijalcu:** NE.
+
+### Files / documents
+
+Uporabnik lahko sam doda sliko ali PDF računa k posamezni vožnji. Priloga ostane lokalno in se lahko vključi v ročno ustvarjen backup ali mesečni ZIP paket.  
+**Poslano razvijalcu:** NE.
+
 ### Financial info
 
 Aplikacija lokalno hrani zneske kilometrine, parkirnin in cestnin. Ne obdeluje plačilnih kartic, bančnih računov ali transakcij.  
@@ -44,7 +54,7 @@ Po trenutni implementaciji aplikacija ne prenaša zgornjih uporabniških podatko
 
 - Podatki so v zasebnem app storage-u.
 - `android:allowBackup=true` je namenoma omogočen za Android Auto Backup/device transfer.
-- Uporabnik lahko izvozi lastni JSON backup; ta vsebuje lokacijsko zgodovino in ga mora uporabnik varovati.
+- Uporabnik lahko izvozi lastni JSON backup; ta lahko vsebuje lokacijsko zgodovino in dodane priloge, zato ga mora uporabnik varovati.
 - Ni oglasnega ID-ja.
 - Ni lastnega računa ali prijave.
 - Ni prodaje podatkov.
@@ -53,7 +63,7 @@ Po trenutni implementaciji aplikacija ne prenaša zgornjih uporabniških podatko
 
 Ker aplikacija nima uporabniškega računa ali strežniške kopije pri razvijalcu, strežniška zahteva za izbris ni potrebna. Uporabnik lahko:
 
-- izbriše posamezne vožnje v aplikaciji,
+- izbriše posamezne vožnje in njihove priloge v aplikaciji,
 - izbriše priljubljene lokacije in vozila,
 - počisti podatke aplikacije v Android nastavitvah,
 - odstrani aplikacijo,

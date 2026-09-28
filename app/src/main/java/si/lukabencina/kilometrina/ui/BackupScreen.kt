@@ -49,7 +49,7 @@ fun BackupScreen(
     var lastCrash by remember { mutableStateOf(LocalCrashReporter.lastCrash(context)) }
 
     val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json"),
+        ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri -> if (uri != null) viewModel.exportTo(uri) }
 
     val restoreLauncher = rememberLauncherForActivityResult(
@@ -78,7 +78,7 @@ fun BackupScreen(
                     DataLine("Priljubljene lokacije", savedPlaceCount.toString())
                     HorizontalDivider()
                     Text(
-                        "Backup vključuje tudi nastavitve, vozila, podatke za poročila in surove GPS točke posameznih voženj.",
+                        "Backup vključuje nastavitve, vozila, podatke za poročila, surove GPS točke in vse shranjene priloge. Stare JSON varnostne kopije v1/v2 ostajajo uvozne.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -119,7 +119,7 @@ fun BackupScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = {
-                        exportLauncher.launch("kilometrina-backup-${LocalDate.now()}.json")
+                        exportLauncher.launch("kilometrina-backup-${LocalDate.now()}.kmbackup")
                     },
                     enabled = actionsEnabled,
                     modifier = Modifier.fillMaxWidth(),
@@ -127,7 +127,7 @@ fun BackupScreen(
                     Text(if (state.working) "Obdelujem …" else "Izvozi varnostno kopijo")
                 }
                 OutlinedButton(
-                    onClick = { restoreLauncher.launch(arrayOf("application/json", "text/json", "text/plain", "application/octet-stream")) },
+                    onClick = { restoreLauncher.launch(arrayOf("application/zip", "application/json", "text/json", "text/plain", "application/octet-stream")) },
                     enabled = actionsEnabled,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -161,7 +161,7 @@ fun BackupScreen(
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Samodejni Android backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Aplikacija dovoljuje Android Auto Backup in prenos podatkov na nov telefon za lokalno bazo ter nastavitve. Ročni JSON backup ostaja priporočljiv pred večjimi spremembami ali menjavo telefona.",
+                        "Aplikacija dovoljuje Android Auto Backup in prenos podatkov na nov telefon za lokalno bazo ter nastavitve. Ročna .kmbackup kopija je priporočljiva pred večjimi spremembami ali menjavo telefona, ker vključuje tudi priloge.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -203,7 +203,7 @@ fun BackupScreen(
             onDismissRequest = { pendingRestore = null },
             title = { Text("Obnovim varnostno kopijo?") },
             text = {
-                Text("Obstoječe vožnje, GPS točke, priljubljene lokacije, vozila in nastavitve bodo zamenjane s podatki iz izbrane kopije. Dejanja brez druge varnostne kopije ni mogoče razveljaviti.")
+                Text("Obstoječe vožnje, GPS točke, priloge, priljubljene lokacije, vozila in nastavitve bodo zamenjane s podatki iz izbrane kopije. Podprte so tudi stare JSON kopije v1/v2. Dejanja brez druge varnostne kopije ni mogoče razveljaviti.")
             },
             confirmButton = {
                 Button(onClick = {

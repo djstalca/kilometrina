@@ -4,7 +4,6 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,8 +13,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.location.DrivingDetectionManager
-
-private const val MAX_BACKUP_BYTES = 64 * 1024 * 1024
 
 data class BackupUiState(
     val working: Boolean = false,
@@ -35,9 +32,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             mutableState.value = BackupUiState(working = true)
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val json = repository.createBackupJson()
                     val resolver = getApplication<Application>().contentResolver
-                    resolver.openOutputStream(uri, "w")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(json) }
+                    resolver.openOutputStream(uri, "w")?.use { repository.writeBackup(it) }
                         ?: error("Datoteke ni bilo mogoče odpreti za zapis.")
                 }
             }.onSuccess {
@@ -54,14 +50,15 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             mutableState.value = BackupUiState(working = true)
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val raw = readLimited(uri)
-                    val summary = repository.restoreBackupJson(raw)
+                    val resolver = getApplication<Application>().contentResolver
+                    val input = resolver.openInputStream(uri) ?: error("Datoteke ni bilo mogoče odpreti.")
+                    val summary = input.use { repository.restoreBackup(it) }
                     syncDriveDetectionAfterRestore()
                     summary
                 }
             }.onSuccess { summary ->
                 mutableState.value = BackupUiState(
-                    message = "Obnovljeno: ${summary.tripCount} voženj, ${summary.savedPlaceCount} lokacij, ${summary.vehicleCount} vozil in ${summary.pointCount} GPS točk.",
+                    message = "Obnovljeno: ${summary.tripCount} voženj, ${summary.savedPlaceCount} lokacij, ${summary.vehicleCount} vozil, ${summary.pointCount} GPS točk in ${summary.attachmentCount} prilog.",
                 )
             }.onFailure {
                 mutableState.value = BackupUiState(message = it.message ?: "Obnovitev ni uspela.", isError = true)
@@ -87,21 +84,5 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         if (!registered) app.settingsRepository.setAutoDetectionEnabled(false)
     }
 
-    private fun readLimited(uri: Uri): String {
-        val resolver = getApplication<Application>().contentResolver
-        val input = resolver.openInputStream(uri) ?: error("Datoteke ni bilo mogoče odpreti.")
-        input.use { stream ->
-            val output = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            var total = 0
-            while (true) {
-                val read = stream.read(buffer)
-                if (read < 0) break
-                total += read
-                if (total > MAX_BACKUP_BYTES) error("Varnostna kopija je večja od 64 MB.")
-                output.write(buffer, 0, read)
-            }
-            return output.toString(Charsets.UTF_8.name())
-        }
-    }
+
 }

@@ -8,12 +8,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import si.lukabencina.kilometrina.KilometrinaApplication
+import si.lukabencina.kilometrina.data.AttachmentEntity
 import si.lukabencina.kilometrina.data.LocationPointEntity
 
 data class TripRouteUiState(
     val tripId: Long? = null,
     val loading: Boolean = false,
     val points: List<LocationPointEntity> = emptyList(),
+    val attachments: List<AttachmentEntity> = emptyList(),
 )
 
 class TripDetailViewModel(application: Application) : AndroidViewModel(application) {
@@ -26,10 +28,12 @@ class TripDetailViewModel(application: Application) : AndroidViewModel(applicati
         _state.value = TripRouteUiState(tripId = tripId, loading = true)
         viewModelScope.launch {
             val points = runCatching { repository.getRoutePoints(tripId) }.getOrDefault(emptyList())
+            val attachments = runCatching { repository.getAttachments(tripId) }.getOrDefault(emptyList())
             _state.value = TripRouteUiState(
                 tripId = tripId,
                 loading = false,
                 points = points,
+                attachments = attachments,
             )
         }
     }

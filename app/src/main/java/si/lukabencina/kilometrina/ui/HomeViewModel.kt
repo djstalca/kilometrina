@@ -146,7 +146,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startTrip(purpose: String, onStateChanged: (StartState) -> Unit) {
+    fun startTrip(purpose: String, description: String, onStateChanged: (StartState) -> Unit) {
         if (!hasLocationPermission()) {
             onStateChanged(StartState.Error("Dovoli natančno lokacijo za beleženje vožnje."))
             return
@@ -183,6 +183,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val tripId = repository.startTrip(
                     location = location,
                     purpose = purpose,
+                    description = description,
                     ratePerKm = state.settings.ratePerKm,
                     vehicle = state.vehicleState.defaultVehicle,
                 )

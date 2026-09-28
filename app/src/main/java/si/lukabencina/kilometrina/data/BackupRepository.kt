@@ -31,6 +31,7 @@ class BackupRepository(
             pointCount = incoming.points.size,
             savedPlaceCount = incoming.savedPlaces.size,
             vehicleCount = incoming.vehicles.vehicles.size,
+            attachmentCount = incoming.attachments.size,
         )
     }
 
@@ -41,14 +42,17 @@ class BackupRepository(
         vehicles = vehicleRepository.state.first(),
         trips = dao.getAllTrips(),
         points = dao.getAllPoints(),
+        attachments = dao.getAllAttachments(),
     )
 
     private suspend fun apply(data: BackupData) {
         database.withTransaction {
+            dao.deleteAllAttachments()
             dao.deleteAllPoints()
             dao.deleteAllTrips()
             if (data.trips.isNotEmpty()) dao.insertTrips(data.trips)
             if (data.points.isNotEmpty()) dao.insertPoints(data.points)
+            if (data.attachments.isNotEmpty()) dao.insertAttachments(data.attachments)
         }
         settingsRepository.replaceAll(data.settings)
         savedPlaceRepository.replaceAll(data.savedPlaces)
@@ -61,4 +65,5 @@ data class BackupRestoreSummary(
     val pointCount: Int,
     val savedPlaceCount: Int,
     val vehicleCount: Int = 0,
+    val attachmentCount: Int = 0,
 )

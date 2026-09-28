@@ -24,6 +24,7 @@ data class TripEntity(
     val vehicleId: String = "",
     val vehicleName: String = "",
     val registrationPlate: String = "",
+    val isBusiness: Boolean = true,
 )
 
 @Entity(
@@ -46,4 +47,27 @@ data class LocationPointEntity(
     val lon: Double,
     val accuracyMeters: Float,
     val segmentMeters: Double,
+)
+
+
+@Entity(
+    tableName = "trip_attachments",
+    foreignKeys = [
+        ForeignKey(
+            entity = TripEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["tripId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("tripId")],
+)
+data class TripAttachmentEntity(
+    @PrimaryKey val id: String,
+    val tripId: Long,
+    val displayName: String,
+    val mimeType: String,
+    val storedFileName: String,
+    val sizeBytes: Long,
+    val createdAt: Long,
 )

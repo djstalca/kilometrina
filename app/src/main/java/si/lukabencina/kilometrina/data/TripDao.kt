@@ -42,6 +42,24 @@ interface TripDao {
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY timestamp ASC")
     suspend fun getPointsForTrip(tripId: Long): List<LocationPointEntity>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAttachment(attachment: TripAttachmentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAttachments(attachments: List<TripAttachmentEntity>)
+
+    @Query("SELECT * FROM trip_attachments WHERE tripId = :tripId ORDER BY createdAt ASC")
+    suspend fun getAttachmentsForTrip(tripId: Long): List<TripAttachmentEntity>
+
+    @Query("SELECT * FROM trip_attachments ORDER BY createdAt ASC")
+    suspend fun getAllAttachments(): List<TripAttachmentEntity>
+
+    @Query("DELETE FROM trip_attachments WHERE id = :id")
+    suspend fun deleteAttachment(id: String)
+
+    @Query("DELETE FROM trip_attachments")
+    suspend fun deleteAllAttachments()
+
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLastPoint(tripId: Long): LocationPointEntity?
 

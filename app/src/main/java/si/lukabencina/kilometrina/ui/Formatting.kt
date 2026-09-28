@@ -2,6 +2,7 @@ package si.lukabencina.kilometrina.ui
 
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
+import si.lukabencina.kilometrina.data.routeAddresses
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -32,4 +33,15 @@ fun tripTotalCost(trip: TripEntity): Double = tripCompensation(trip) + tripAddit
 fun shortLocation(address: String?): String {
     if (address.isNullOrBlank()) return "Lokacija ni na voljo"
     return address.split(',').take(2).joinToString(", ").trim()
+}
+
+
+fun tripDisplayTitle(trip: TripEntity): String =
+    trip.description.trim().ifBlank { trip.purpose.trim().ifBlank { "Službena pot" } }
+
+fun formatTripRoute(trip: TripEntity, shorten: Boolean = true): String {
+    val addresses = trip.routeAddresses()
+    if (addresses.isEmpty()) return "Lokacija ni na voljo"
+    val values = if (shorten) addresses.map(::shortLocation) else addresses
+    return values.joinToString(" → ")
 }

@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.ActivityTransition
@@ -60,6 +61,32 @@ class DismissDrivingSuggestionReceiver : BroadcastReceiver() {
     }
 }
 
+class StartBusinessSuggestionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        val pending = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                val result = QuickTripController.start(context)
+                result.onSuccess { DrivingSuggestionNotifications.cancelAll(context) }
+                result.exceptionOrNull()?.let { error ->
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(context, error.message ?: "Začetek vožnje ni uspel.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+}
+
+class PrivateDrivingSuggestionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        DrivingSuggestionNotifications.cancelAll(context)
+        Toast.makeText(context, "Zasebna vožnja ne bo zabeležena.", Toast.LENGTH_SHORT).show()
+    }
+}
+
 object DrivingSuggestionNotifications {
     private const val CHANNEL_ID = "drive_suggestions"
     private const val START_ID = 2101
@@ -76,20 +103,33 @@ object DrivingSuggestionNotifications {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val dismiss = PendingIntent.getBroadcast(
+        val startBusiness = PendingIntent.getBroadcast(
             context,
             7102,
+            Intent(context, StartBusinessSuggestionReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val markPrivate = PendingIntent.getBroadcast(
+            context,
+            7105,
+            Intent(context, PrivateDrivingSuggestionReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val dismiss = PendingIntent.getBroadcast(
+            context,
+            7106,
             Intent(context, DismissDrivingSuggestionReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_location)
             .setContentTitle("Kaže, da si začel vožnjo")
-            .setContentText("Odpri Kilometrino in z enim dotikom začni beleženje.")
+            .setContentText("Izberi, ali gre za službeno ali zasebno vožnjo.")
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .addAction(0, "Začni", openApp)
+            .addAction(0, "Službena", startBusiness)
+            .addAction(0, "Zasebna", markPrivate)
             .addAction(0, "Prezri", dismiss)
             .build()
         context.getSystemService(NotificationManager::class.java).notify(START_ID, notification)

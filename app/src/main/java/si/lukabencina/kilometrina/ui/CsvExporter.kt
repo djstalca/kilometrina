@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import si.lukabencina.kilometrina.data.AppSettings
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 
 object CsvExporter {
     private val locale = Locale.forLanguageTag("sl-SI")
@@ -17,7 +18,7 @@ object CsvExporter {
         month: YearMonth?,
         settings: AppSettings,
     ): String {
-        val completed = trips.filter { it.endTime != null }.sortedBy { it.startTime }
+        val completed = trips.filter { it.endTime != null && it.tripKind != TripKinds.PRIVATE }.sortedBy { it.startTime }
         val summary = ReportCalculator.summarize(completed)
         val lines = mutableListOf<String>()
         val vehicles = completed

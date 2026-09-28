@@ -97,10 +97,11 @@ fun TripsScreen(
             YearMonth.from(date) == selectedMonth
         }
     }
-    val monthKm = monthTrips.sumOf { it.distanceMeters } / 1000.0
-    val monthMileage = monthTrips.sumOf(::tripCompensation)
-    val monthExtras = monthTrips.sumOf(::tripAdditionalCosts)
-    val monthTotal = monthTrips.sumOf(::tripTotalCost)
+    val businessMonthTrips = remember(monthTrips) { monthTrips.filter { it.isBusiness } }
+    val monthKm = businessMonthTrips.sumOf { it.distanceMeters } / 1000.0
+    val monthMileage = businessMonthTrips.sumOf(::tripCompensation)
+    val monthExtras = businessMonthTrips.sumOf(::tripAdditionalCosts)
+    val monthTotal = businessMonthTrips.sumOf(::tripTotalCost)
     var deleteCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var editCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var detailCandidate by remember { mutableStateOf<TripEntity?>(null) }
@@ -116,7 +117,7 @@ fun TripsScreen(
         if (uri != null) {
             context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
                 it.write("\uFEFF")
-                it.write(CsvExporter.build(monthTrips))
+                it.write(CsvExporter.build(businessMonthTrips))
             }
         }
     }
@@ -241,6 +242,13 @@ fun TripsScreen(
         TripDetailDialog(
             trip = trip,
             routeState = routeState,
+            onAddAttachment = { uri -> detailViewModel.addAttachment(trip.id, uri) },
+            onDeleteAttachment = { attachment -> detailViewModel.deleteAttachment(trip.id, attachment) },
+            onToggleBusiness = {
+                val updated = trip.copy(isBusiness = !trip.isBusiness)
+                onUpdateTrip(updated)
+                detailCandidate = updated
+            },
             onDismiss = {
                 detailCandidate = null
                 detailViewModel.clear()
@@ -287,7 +295,17 @@ private fun TripRow(trip: TripEntity, onOpen: () -> Unit, onEdit: () -> Unit, on
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(trip.purpose, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(trip.purpose, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (!trip.isBusiness) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Zasebna",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        }
+                    }
                     Text(
                         "${formatDate(trip.startTime)} • ${formatTime(trip.startTime)}–${trip.endTime?.let(::formatTime).orEmpty()}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.MainActivity
+import si.lukabencina.kilometrina.quick.QuickTripActivity
 import si.lukabencina.kilometrina.R
 
 class DrivingTransitionReceiver : BroadcastReceiver() {
@@ -76,20 +77,35 @@ object DrivingSuggestionNotifications {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val dismiss = PendingIntent.getBroadcast(
+        val startTrip = PendingIntent.getActivity(
             context,
             7102,
+            Intent(context, QuickTripActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val privateTrip = PendingIntent.getBroadcast(
+            context,
+            7105,
+            Intent(context, DismissDrivingSuggestionReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val dismiss = PendingIntent.getBroadcast(
+            context,
+            7106,
             Intent(context, DismissDrivingSuggestionReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_location)
             .setContentTitle("Kaže, da si začel vožnjo")
-            .setContentText("Odpri Kilometrino in z enim dotikom začni beleženje.")
+            .setContentText("Izberi službeno vožnjo za takojšen začetek ali jo označi kot zasebno.")
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .addAction(0, "Začni", openApp)
+            .addAction(0, "Službena", startTrip)
+            .addAction(0, "Zasebna", privateTrip)
             .addAction(0, "Prezri", dismiss)
             .build()
         context.getSystemService(NotificationManager::class.java).notify(START_ID, notification)

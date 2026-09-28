@@ -17,7 +17,7 @@ object CsvExporter {
         month: YearMonth?,
         settings: AppSettings,
     ): String {
-        val completed = trips.filter { it.endTime != null }.sortedBy { it.startTime }
+        val completed = trips.filter { it.endTime != null && it.isBusiness }.sortedBy { it.startTime }
         val summary = ReportCalculator.summarize(completed)
         val lines = mutableListOf<String>()
         val vehicles = completed

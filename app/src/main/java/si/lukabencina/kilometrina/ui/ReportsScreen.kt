@@ -1,5 +1,7 @@
 package si.lukabencina.kilometrina.ui
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -34,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
@@ -59,10 +64,12 @@ fun ReportsScreen(
     settings: AppSettings,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var packageWorking by remember { mutableStateOf(false) }
     var selectedMonthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     var selectedStatsYear by rememberSaveable { mutableIntStateOf(YearMonth.now().year) }
     val selectedMonth = remember(selectedMonthValue) { YearMonth.parse(selectedMonthValue) }
-    val completedTrips = remember(trips) { trips.filter { it.endTime != null } }
+    val completedTrips = remember(trips) { trips.filter { it.endTime != null && it.isBusiness } }
     val monthTrips = remember(completedTrips, selectedMonth) {
         completedTrips.filter {
             val date = Instant.ofEpochMilli(it.startTime).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -230,6 +237,33 @@ fun ReportsScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
+                    onClick = {
+                        if (!packageWorking) {
+                            packageWorking = true
+                            scope.launch {
+                                runCatching {
+                                    MonthlySubmissionExporter.createShareUri(context, monthTrips, selectedMonth, settings)
+                                }.onSuccess { uri ->
+                                    val share = Intent(Intent.ACTION_SEND)
+                                        .setType("application/zip")
+                                        .putExtra(Intent.EXTRA_STREAM, uri)
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    context.startActivity(Intent.createChooser(share, "Oddaj mesečni obračun"))
+                                }.onFailure {
+                                    Toast.makeText(context, it.message ?: "Paketa ni bilo mogoče pripraviti.", Toast.LENGTH_LONG).show()
+                                }
+                                packageWorking = false
+                            }
+                        }
+                    },
+                    enabled = monthTrips.isNotEmpty() && !packageWorking,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Send, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (packageWorking) "Pripravljam paket …" else "Oddaj mesec")
+                }
+                OutlinedButton(
                     onClick = { pdfLauncher.launch("kilometrina-${selectedMonth}.pdf") },
                     enabled = monthTrips.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth(),

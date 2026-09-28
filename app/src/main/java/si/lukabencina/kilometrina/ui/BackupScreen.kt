@@ -40,6 +40,7 @@ private const val PRIVACY_POLICY_URL = "https://github.com/djstalca/kilometrina/
 fun BackupScreen(
     tripCount: Int,
     savedPlaceCount: Int,
+    attachmentCount: Int,
     hasActiveTrip: Boolean,
     viewModel: BackupViewModel = viewModel(),
 ) {
@@ -76,6 +77,7 @@ fun BackupScreen(
                     Text("Lokalni podatki", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     DataLine("Zaključene vožnje", tripCount.toString())
                     DataLine("Priljubljene lokacije", savedPlaceCount.toString())
+                    DataLine("Priloge", attachmentCount.toString())
                     HorizontalDivider()
                     Text(
                         "Backup vključuje tudi nastavitve, vozila, podatke za poročila, surove GPS točke in dodane priloge posameznih voženj.",

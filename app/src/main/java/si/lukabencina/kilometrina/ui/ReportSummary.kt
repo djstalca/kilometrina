@@ -1,6 +1,7 @@
 package si.lukabencina.kilometrina.ui
 
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 
 data class ReportSummary(
     val tripCount: Int,
@@ -13,7 +14,7 @@ data class ReportSummary(
 
 object ReportCalculator {
     fun summarize(trips: List<TripEntity>): ReportSummary {
-        val completed = trips.filter { it.endTime != null }
+        val completed = trips.filter { it.endTime != null && it.tripKind != TripKinds.PRIVATE }
         val distanceKm = completed.sumOf { it.distanceMeters } / 1000.0
         val mileage = completed.sumOf(::tripCompensation)
         val parking = completed.sumOf { it.parkingCents / 100.0 }

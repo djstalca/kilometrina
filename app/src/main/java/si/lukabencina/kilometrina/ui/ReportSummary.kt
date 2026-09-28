@@ -13,7 +13,7 @@ data class ReportSummary(
 
 object ReportCalculator {
     fun summarize(trips: List<TripEntity>): ReportSummary {
-        val completed = trips.filter { it.endTime != null }
+        val completed = trips.filter { it.endTime != null && it.tripType != "PRIVATE" }
         val distanceKm = completed.sumOf { it.distanceMeters } / 1000.0
         val mileage = completed.sumOf(::tripCompensation)
         val parking = completed.sumOf { it.parkingCents / 100.0 }

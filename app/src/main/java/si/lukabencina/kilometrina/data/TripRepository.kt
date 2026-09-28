@@ -9,6 +9,7 @@ import java.util.Base64
 import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import si.lukabencina.kilometrina.location.SegmentEvaluation
 import si.lukabencina.kilometrina.location.TrackingMath
@@ -23,6 +24,7 @@ class TripRepository(
     private val context: Context,
     private val dao: TripDao,
     private val savedPlaceRepository: SavedPlaceRepository,
+    private val settingsRepository: SettingsRepository,
 ) {
     val trips: Flow<List<TripEntity>> = dao.observeTrips()
     val activeTrip: Flow<TripEntity?> = dao.observeActiveTrip()
@@ -194,9 +196,18 @@ class TripRepository(
         val address = finalLocation?.let {
             matchedPlace?.name ?: reverseGeocode(it.latitude, it.longitude)
         }
-        val smartPurpose = matchedPlace?.defaultPurpose
-            ?.takeIf { it.isNotBlank() && active.purpose.trim().equals("Službena pot", ignoreCase = true) }
-            ?: active.purpose
+        val isGenericPurpose = active.purpose.trim().equals("Službena pot", ignoreCase = true)
+        val savedPlacePurpose = matchedPlace?.defaultPurpose?.takeIf { it.isNotBlank() && isGenericPurpose }
+        val calendarPurpose = if (savedPlacePurpose == null && isGenericPurpose &&
+            settingsRepository.settings.first().calendarSuggestionsEnabled
+        ) {
+            CalendarSuggestionProvider.eventTitleNearTrip(
+                context = context,
+                startTime = active.startTime,
+                endTime = System.currentTimeMillis(),
+            )
+        } else null
+        val smartPurpose = savedPlacePurpose ?: calendarPurpose ?: active.purpose
 
         val gpsQuality = GpsQualityEvaluator.evaluate(dao.getPointsForTrip(active.id))
         dao.updateTrip(

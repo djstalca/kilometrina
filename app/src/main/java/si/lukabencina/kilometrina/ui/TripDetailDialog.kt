@@ -20,7 +20,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -59,7 +61,9 @@ import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.spatialk.geojson.BoundingBox
+import si.lukabencina.kilometrina.data.GpsQuality
 import si.lukabencina.kilometrina.data.LocationPointEntity
+import si.lukabencina.kilometrina.data.TripKinds
 import si.lukabencina.kilometrina.data.TripEntity
 import java.util.Locale
 import kotlin.math.ceil
@@ -71,6 +75,7 @@ import kotlin.math.tan
 fun TripDetailDialog(
     trip: TripEntity,
     routeState: TripRouteUiState,
+    onDeleteAttachment: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -114,11 +119,34 @@ fun TripDetailDialog(
                         DetailLine("Skupaj", formatMoney(tripTotalCost(trip)), emphasized = true)
                         val vehicle = listOf(trip.vehicleName, trip.registrationPlate).filter { it.isNotBlank() }.joinToString(" • ")
                         if (vehicle.isNotBlank()) DetailLine("Vozilo", vehicle)
+                        DetailLine("Vrsta", if (trip.tripKind == TripKinds.PRIVATE) "Zasebna" else "Službena")
+                        if (trip.calendarTitle.isNotBlank()) DetailLine("Koledar", trip.calendarTitle)
+                        if (trip.gpsQuality != GpsQuality.UNKNOWN) {
+                            val gpsLabel = when (trip.gpsQuality) {
+                                GpsQuality.GOOD -> "Dober"
+                                GpsQuality.FAIR -> "Srednji"
+                                else -> "Preveri"
+                            }
+                            DetailLine("GPS zapis", gpsLabel)
+                        }
                     }
                 }
 
                 HorizontalDivider()
                 Text("GPS trasa", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (trip.gpsWarning.isNotBlank()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Text(
+                            trip.gpsWarning,
+                            modifier = Modifier.padding(12.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
                 when {
                     routeState.loading || routeState.tripId != trip.id -> {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -141,6 +169,35 @@ fun TripDetailDialog(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+
+                if (routeState.attachments.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Priloge", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    routeState.attachments.forEach { attachment ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            shape = MaterialTheme.shapes.large,
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.AttachFile, contentDescription = null)
+                                Column(modifier = Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                                    Text(attachment.displayName, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        attachment.mimeType,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                IconButton(onClick = { onDeleteAttachment(attachment.id) }) {
+                                    Icon(Icons.Outlined.Delete, contentDescription = "Izbriši prilogo")
+                                }
+                            }
+                        }
                     }
                 }
             }

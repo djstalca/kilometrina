@@ -78,7 +78,7 @@ fun BackupScreen(
                     DataLine("Priljubljene lokacije", savedPlaceCount.toString())
                     HorizontalDivider()
                     Text(
-                        "Backup vključuje tudi nastavitve, vozila, podatke za poročila in surove GPS točke posameznih voženj.",
+                        "Backup vključuje tudi nastavitve, vozila, podatke za poročila, surove GPS točke in pripete račune/PDF-je. Nova verzija še vedno uvaža stare v1 in v2 varnostne kopije.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -141,7 +141,7 @@ fun BackupScreen(
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Zasebnost", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "GPS lokacije, relacije, vozila in obračuni se obdelujejo lokalno. Aplikacija nima oglasov, analitike ali uporabniškega računa in podatkov ne pošilja razvijalcu.",
+                        "GPS lokacije, relacije, vozila, koledarski predlogi, priloge in obračuni se obdelujejo lokalno. Aplikacija nima oglasov, analitike ali uporabniškega računa in podatkov ne pošilja razvijalcu.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     OutlinedButton(

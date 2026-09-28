@@ -1,5 +1,6 @@
 package si.lukabencina.kilometrina.ui
 
+import android.content.Intent
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -109,6 +110,16 @@ fun TripsScreen(
 
     LaunchedEffect(detailCandidate?.id) {
         detailCandidate?.let { detailViewModel.load(it.id) }
+    }
+
+    LaunchedEffect(routeState.openAttachmentUri) {
+        val uri = routeState.openAttachmentUri ?: return@LaunchedEffect
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, routeState.openAttachmentMimeType ?: "application/octet-stream")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { context.startActivity(intent) }
+        detailViewModel.consumeOpenAttachment()
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -252,6 +263,7 @@ fun TripsScreen(
             trip = trip,
             routeState = routeState,
             onAddAttachment = { attachmentLauncher.launch(arrayOf("image/*", "application/pdf")) },
+            onOpenAttachment = detailViewModel::openAttachment,
             onDeleteAttachment = { detailViewModel.deleteAttachment(trip.id, it) },
             onDismiss = {
                 detailCandidate = null

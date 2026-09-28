@@ -5,11 +5,13 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import si.lukabencina.kilometrina.data.AppSettings
+import si.lukabencina.kilometrina.data.AttachmentEntity
 import si.lukabencina.kilometrina.data.BackupCodec
 import si.lukabencina.kilometrina.data.BackupData
 import si.lukabencina.kilometrina.data.LocationPointEntity
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 import si.lukabencina.kilometrina.data.Vehicle
 import si.lukabencina.kilometrina.data.VehicleState
 
@@ -109,6 +111,94 @@ class BackupCodecTest {
         assertEquals("VW Passat", decoded.vehicles.defaultVehicle?.name)
         assertEquals("LJ-TEST", decoded.trips.single().registrationPlate)
         assertTrue(!decoded.settings.autoDetectionEnabled)
+    }
+
+    @Test
+    fun readsSchemaTwoBackupWithNewFieldsDefaulted() {
+        val raw = """
+            {
+              "format":"kilometrina-backup",
+              "schemaVersion":2,
+              "generatedAt":1800000000000,
+              "settings":{"ratePerKm":0.43,"defaultPurpose":"Službena pot","driverName":"Luka","companyName":"Prodent"},
+              "savedPlaces":[],
+              "vehicles":{"defaultVehicleId":"","items":[]},
+              "trips":[{
+                "id":2,
+                "startTime":1800000000000,
+                "endTime":1800000600000,
+                "startLat":46.0,
+                "startLon":14.0,
+                "startAddress":"Ljubljana",
+                "endLat":46.1,
+                "endLon":14.1,
+                "endAddress":"Kranj",
+                "distanceMeters":20000.0,
+                "purpose":"Obisk",
+                "ratePerKm":0.43,
+                "tollsCents":0,
+                "parkingCents":0,
+                "vehicleId":"",
+                "vehicleName":"",
+                "registrationPlate":""
+              }],
+              "points":[]
+            }
+        """.trimIndent()
+
+        val decoded = BackupCodec.decode(raw)
+        val trip = decoded.trips.single()
+
+        assertEquals(TripKinds.BUSINESS, trip.tripKind)
+        assertEquals("UNKNOWN", trip.gpsQuality)
+        assertTrue(decoded.attachments.isEmpty())
+        assertTrue(!decoded.settings.calendarIntegrationEnabled)
+    }
+
+    @Test
+    fun schemaThreeRoundTripKeepsAttachmentBytesAndNewMetadata() {
+        val trip = TripEntity(
+            id = 3,
+            startTime = 1_800_000_000_000,
+            endTime = 1_800_000_600_000,
+            startLat = 46.0,
+            startLon = 14.0,
+            startAddress = "Ljubljana",
+            endLat = 46.1,
+            endLon = 14.1,
+            endAddress = "Kranj",
+            distanceMeters = 20_000.0,
+            purpose = "Servis",
+            tripKind = TripKinds.BUSINESS,
+            gpsQuality = "GOOD",
+            calendarEventId = 44,
+            calendarTitle = "Servis RTG",
+        )
+        val attachmentBytes = byteArrayOf(1, 2, 3, 4, 5)
+        val data = BackupData(
+            generatedAt = 1_800_000_000_000,
+            settings = AppSettings(calendarIntegrationEnabled = true),
+            savedPlaces = emptyList(),
+            trips = listOf(trip),
+            points = emptyList(),
+            attachments = listOf(
+                AttachmentEntity(
+                    id = 9,
+                    tripId = trip.id,
+                    displayName = "racun.pdf",
+                    mimeType = "application/pdf",
+                    data = attachmentBytes,
+                    createdAt = 1234,
+                ),
+            ),
+        )
+
+        val decoded = BackupCodec.decode(BackupCodec.encode(data))
+
+        assertEquals(1, decoded.attachments.size)
+        assertTrue(decoded.attachments.single().data.contentEquals(attachmentBytes))
+        assertEquals("Servis RTG", decoded.trips.single().calendarTitle)
+        assertTrue(decoded.settings.calendarIntegrationEnabled)
     }
 
     @Test

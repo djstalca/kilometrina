@@ -14,14 +14,22 @@ import kotlinx.coroutines.tasks.await
 import si.lukabencina.kilometrina.KilometrinaApplication
 
 object QuickTripController {
-    suspend fun toggle(context: Context): Result<Boolean> = runCatching {
+    suspend fun toggle(context: Context): Result<Boolean> {
         val app = context.applicationContext as KilometrinaApplication
-        val active = app.tripRepository.getActiveTrip()
-        if (active != null) {
-            LocationTrackingService.stop(context)
-            false
+        return if (app.tripRepository.getActiveTrip() != null) {
+            runCatching {
+                LocationTrackingService.stop(context)
+                false
+            }
         } else {
-            require(
+            start(context)
+        }
+    }
+
+    suspend fun start(context: Context): Result<Boolean> = runCatching {
+        val app = context.applicationContext as KilometrinaApplication
+        if (app.tripRepository.getActiveTrip() != null) return@runCatching true
+        require(
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
                     PackageManager.PERMISSION_GRANTED,
             ) { "Najprej v aplikaciji dovoli natančno lokacijo." }
@@ -59,7 +67,6 @@ object QuickTripController {
                 app.tripRepository.getActiveTrip()?.let { app.tripRepository.deleteTrip(it.id) }
                 throw error
             }
-            true
-        }
+        true
     }
 }

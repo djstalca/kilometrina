@@ -2,6 +2,8 @@ package si.lukabencina.kilometrina.ui
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -23,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Delete
@@ -64,8 +67,10 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
+import si.lukabencina.kilometrina.data.AttachmentEntity
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 import si.lukabencina.kilometrina.data.TripRules
 import si.lukabencina.kilometrina.data.Vehicle
 import si.lukabencina.kilometrina.data.VehicleState
@@ -81,9 +86,12 @@ fun TripsScreen(
     savedPlaces: List<SavedPlace>,
     recentLocations: List<String>,
     vehicleState: VehicleState,
+    attachments: List<AttachmentEntity>,
     onDeleteTrip: (Long) -> Unit,
     onUpdateTrip: (TripEntity) -> Unit,
     onAddManualTrip: (TripEntity) -> Unit,
+    onAddAttachment: (Long, String, String, ByteArray) -> Unit,
+    onDeleteAttachment: (Long) -> Unit,
     detailViewModel: TripDetailViewModel = viewModel(),
 ) {
     val context = LocalContext.current
@@ -105,6 +113,7 @@ fun TripsScreen(
     var editCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var detailCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
+    var attachmentCandidate by remember { mutableStateOf<TripEntity?>(null) }
 
     LaunchedEffect(detailCandidate?.id) {
         detailCandidate?.let { detailViewModel.load(it.id) }
@@ -117,6 +126,23 @@ fun TripsScreen(
             context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
                 it.write("\uFEFF")
                 it.write(CsvExporter.build(monthTrips))
+            }
+        }
+    }
+
+    val attachmentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val trip = attachmentCandidate
+        attachmentCandidate = null
+        if (uri != null && trip != null) {
+            runCatching {
+                val mime = context.contentResolver.getType(uri).orEmpty()
+                val name = attachmentDisplayName(context, uri)
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("Priloge ni bilo mogoče prebrati.")
+                require(bytes.size <= 10 * 1024 * 1024) { "Priloga je večja od 10 MB." }
+                onAddAttachment(trip.id, name, mime, bytes)
             }
         }
     }
@@ -199,8 +225,13 @@ fun TripsScreen(
             items(monthTrips, key = { it.id }) { trip ->
                 TripRow(
                     trip = trip,
+                    attachmentCount = attachments.count { it.tripId == trip.id },
                     onOpen = { detailCandidate = trip },
                     onEdit = { editCandidate = trip },
+                    onAttach = {
+                        attachmentCandidate = trip
+                        attachmentLauncher.launch(arrayOf("image/*", "application/pdf"))
+                    },
                     onDelete = { deleteCandidate = trip },
                 )
             }
@@ -278,7 +309,14 @@ private fun CostLine(label: String, value: Double, emphasized: Boolean = false) 
 }
 
 @Composable
-private fun TripRow(trip: TripEntity, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun TripRow(
+    trip: TripEntity,
+    attachmentCount: Int,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onAttach: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -301,8 +339,17 @@ private fun TripRow(trip: TripEntity, onOpen: () -> Unit, onEdit: () -> Unit, on
                         )
                     }
                 }
+                IconButton(onClick = onAttach) {
+                    Icon(Icons.Outlined.AttachFile, contentDescription = "Dodaj prilogo")
+                }
                 IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = "Uredi vožnjo") }
                 IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Izbriši vožnjo") }
+            }
+            if (trip.tripKind == TripKinds.PRIVATE) {
+                Text("Zasebna vožnja", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+            }
+            if (attachmentCount > 0) {
+                Text("$attachmentCount prilog", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             Text("${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}")
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
@@ -339,6 +386,7 @@ private fun ManualTripDialog(
     var startDateTime by remember { mutableStateOf(now.minusHours(1)) }
     var endDateTime by remember { mutableStateOf(now) }
     var purpose by remember { mutableStateOf("Službena pot") }
+    var tripKind by remember { mutableStateOf(TripKinds.BUSINESS) }
     var startAddress by remember { mutableStateOf("") }
     var endAddress by remember { mutableStateOf("") }
     var distanceKm by remember { mutableStateOf("") }
@@ -353,7 +401,7 @@ private fun ManualTripDialog(
         title = { Text("Dodaj vožnjo ročno") },
         text = {
             TripFormFields(
-                purpose, { purpose = it }, startAddress, { startAddress = it }, endAddress, { endAddress = it },
+                tripKind, { tripKind = it }, purpose, { purpose = it }, startAddress, { startAddress = it }, endAddress, { endAddress = it },
                 savedPlaces, recentLocations,
                 { startAddress = it.address },
                 { endAddress = it.address; if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose },
@@ -386,6 +434,7 @@ private fun ManualTripDialog(
                         vehicleId = vehicle?.id.orEmpty(),
                         vehicleName = vehicle?.name.orEmpty(),
                         registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                        tripKind = tripKind,
                     ),
                 )
             }) { Text("Dodaj") }
@@ -406,6 +455,7 @@ private fun EditTripDialog(
     var startDateTime by remember(trip.id) { mutableStateOf(fromEpochMillis(trip.startTime)) }
     var endDateTime by remember(trip.id) { mutableStateOf(fromEpochMillis(requireNotNull(trip.endTime))) }
     var purpose by remember(trip.id) { mutableStateOf(trip.purpose) }
+    var tripKind by remember(trip.id) { mutableStateOf(trip.tripKind) }
     var startAddress by remember(trip.id) { mutableStateOf(trip.startAddress) }
     var endAddress by remember(trip.id) { mutableStateOf(trip.endAddress.orEmpty()) }
     var distanceKm by remember(trip.id) { mutableStateOf(decimalInput(trip.distanceMeters / 1000.0, 1)) }
@@ -428,7 +478,7 @@ private fun EditTripDialog(
         title = { Text("Uredi vožnjo") },
         text = {
             TripFormFields(
-                purpose, { purpose = it }, startAddress, { startAddress = it }, endAddress, { endAddress = it },
+                tripKind, { tripKind = it }, purpose, { purpose = it }, startAddress, { startAddress = it }, endAddress, { endAddress = it },
                 savedPlaces, recentLocations,
                 { startAddress = it.address },
                 { endAddress = it.address; if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose },
@@ -459,6 +509,7 @@ private fun EditTripDialog(
                         vehicleId = vehicle?.id.orEmpty(),
                         vehicleName = vehicle?.name.orEmpty(),
                         registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                        tripKind = tripKind,
                     ),
                 )
             }) { Text("Shrani") }
@@ -469,6 +520,8 @@ private fun EditTripDialog(
 
 @Composable
 private fun TripFormFields(
+    tripKind: String,
+    onTripKindChange: (String) -> Unit,
     purpose: String,
     onPurposeChange: (String) -> Unit,
     startAddress: String,
@@ -500,6 +553,18 @@ private fun TripFormFields(
         modifier = Modifier.heightIn(max = 580.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = tripKind == TripKinds.BUSINESS,
+                onClick = { onTripKindChange(TripKinds.BUSINESS) },
+                label = { Text("Službena") },
+            )
+            FilterChip(
+                selected = tripKind == TripKinds.PRIVATE,
+                onClick = { onTripKindChange(TripKinds.PRIVATE) },
+                label = { Text("Zasebna") },
+            )
+        }
         DateTimeField("Odhod", startDateTime, onStartDateTimeChange)
         DateTimeField("Prihod", endDateTime, onEndDateTimeChange)
         OutlinedTextField(value = purpose, onValueChange = onPurposeChange, label = { Text("Namen poti") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -611,3 +676,10 @@ private fun fromEpochMillis(value: Long): LocalDateTime = Instant.ofEpochMilli(v
 private fun parseDecimal(value: String): Double? = value.trim().replace(',', '.').toDoubleOrNull()
 private fun parseOptionalDecimal(value: String): Double? = if (value.isBlank()) 0.0 else parseDecimal(value)
 private fun decimalInput(value: Double, decimals: Int): String = String.format(Locale.US, "%.${decimals}f", value).trimEnd('0').trimEnd('.')
+
+
+private fun attachmentDisplayName(context: android.content.Context, uri: Uri): String {
+    return context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0)?.take(180) else null
+    } ?: uri.lastPathSegment?.takeLast(120) ?: "Priloga"
+}

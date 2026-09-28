@@ -10,6 +10,8 @@ import si.lukabencina.kilometrina.data.BackupData
 import si.lukabencina.kilometrina.data.LocationPointEntity
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripAttachmentEntity
+import java.util.Base64
 import si.lukabencina.kilometrina.data.Vehicle
 import si.lukabencina.kilometrina.data.VehicleState
 
@@ -134,4 +136,86 @@ class BackupCodecTest {
             BackupCodec.decode(BackupCodec.encode(data))
         }
     }
+
+    @Test
+    fun readsSchemaTwoBackupWithNewFieldsDefaulted() {
+        val raw = """
+            {
+              "format":"kilometrina-backup",
+              "schemaVersion":2,
+              "generatedAt":1800000000000,
+              "settings":{"ratePerKm":0.43,"defaultPurpose":"Službena pot","driverName":"Luka","companyName":"Prodent"},
+              "savedPlaces":[],
+              "vehicles":{"defaultVehicleId":"","items":[]},
+              "trips":[{
+                "id":2,
+                "startTime":1800000000000,
+                "endTime":1800000600000,
+                "startLat":46.0,
+                "startLon":14.0,
+                "startAddress":"Ljubljana",
+                "endLat":46.1,
+                "endLon":14.1,
+                "endAddress":"Kranj",
+                "distanceMeters":20000.0,
+                "purpose":"Obisk",
+                "ratePerKm":0.43,
+                "tollsCents":0,
+                "parkingCents":0,
+                "vehicleId":"",
+                "vehicleName":"",
+                "registrationPlate":""
+              }],
+              "points":[]
+            }
+        """.trimIndent()
+
+        val decoded = BackupCodec.decode(raw)
+
+        assertEquals("BUSINESS", decoded.trips.single().tripType)
+        assertEquals("", decoded.trips.single().gpsQuality)
+        assertTrue(decoded.attachments.isEmpty())
+    }
+
+    @Test
+    fun schemaThreeRoundTripKeepsAttachmentsAndNewTripFields() {
+        val encodedReceipt = Base64.getEncoder().encodeToString("račun".toByteArray())
+        val trip = TripEntity(
+            id = 5,
+            startTime = 1_800_000_000_000,
+            endTime = 1_800_000_060_000,
+            startLat = 46.0,
+            startLon = 14.0,
+            startAddress = "Ljubljana",
+            endLat = 46.1,
+            endLon = 14.1,
+            endAddress = "Kranj",
+            distanceMeters = 20_000.0,
+            tripType = "PRIVATE",
+            gpsQuality = "GOOD",
+        )
+        val attachment = TripAttachmentEntity(
+            id = 9,
+            tripId = 5,
+            displayName = "racun.pdf",
+            mimeType = "application/pdf",
+            contentBase64 = encodedReceipt,
+            addedAt = 1_800_000_070_000,
+        )
+        val data = BackupData(
+            generatedAt = 1_800_000_100_000,
+            settings = AppSettings(),
+            savedPlaces = emptyList(),
+            trips = listOf(trip),
+            points = emptyList(),
+            attachments = listOf(attachment),
+        )
+
+        val decoded = BackupCodec.decode(BackupCodec.encode(data))
+
+        assertEquals("PRIVATE", decoded.trips.single().tripType)
+        assertEquals("GOOD", decoded.trips.single().gpsQuality)
+        assertEquals(attachment, decoded.attachments.single())
+    }
+
 }

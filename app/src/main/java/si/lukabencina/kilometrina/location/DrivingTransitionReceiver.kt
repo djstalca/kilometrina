@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.MainActivity
+import si.lukabencina.kilometrina.QuickTripActionActivity
 import si.lukabencina.kilometrina.R
 
 class DrivingTransitionReceiver : BroadcastReceiver() {
@@ -76,6 +77,20 @@ object DrivingSuggestionNotifications {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val business = PendingIntent.getActivity(
+            context,
+            7105,
+            Intent(context, QuickTripActionActivity::class.java)
+                .setAction(QuickTripActionActivity.ACTION_START_BUSINESS),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val privateTrip = PendingIntent.getActivity(
+            context,
+            7106,
+            Intent(context, QuickTripActionActivity::class.java)
+                .setAction(QuickTripActionActivity.ACTION_START_PRIVATE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val dismiss = PendingIntent.getBroadcast(
             context,
             7102,
@@ -85,11 +100,12 @@ object DrivingSuggestionNotifications {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_location)
             .setContentTitle("Kaže, da si začel vožnjo")
-            .setContentText("Odpri Kilometrino in z enim dotikom začni beleženje.")
+            .setContentText("Izberi vrsto vožnje ali jo prezri.")
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .addAction(0, "Začni", openApp)
+            .addAction(0, "Službena", business)
+            .addAction(0, "Zasebna", privateTrip)
             .addAction(0, "Prezri", dismiss)
             .build()
         context.getSystemService(NotificationManager::class.java).notify(START_ID, notification)

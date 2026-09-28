@@ -6,6 +6,7 @@ import java.util.Locale
 import si.lukabencina.kilometrina.data.AppSettings
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
+import si.lukabencina.kilometrina.data.routeStops
 
 object CsvExporter {
     private val locale = Locale.forLanguageTag("sl-SI")
@@ -45,8 +46,11 @@ object CsvExporter {
             "Čas odhoda",
             "Čas prihoda",
             "Odhod",
+            "Postanki",
             "Prihod",
+            "Relacija",
             "Namen",
+            "Opis",
             "Vozilo",
             "Registrska oznaka",
             "Kilometri",
@@ -63,8 +67,11 @@ object CsvExporter {
                 csv(formatTime(trip.startTime)),
                 csv(trip.endTime?.let(::formatTime).orEmpty()),
                 csv(trip.startAddress),
+                csv(trip.routeStops().joinToString(" | ")),
                 csv(trip.endAddress.orEmpty()),
+                csv(formatTripRoute(trip, shorten = false)),
                 csv(trip.purpose),
+                csv(trip.description),
                 csv(trip.vehicleName),
                 csv(trip.registrationPlate),
                 decimal(trip.distanceMeters / 1000.0),

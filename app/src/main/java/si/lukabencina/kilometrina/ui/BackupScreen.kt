@@ -78,7 +78,7 @@ fun BackupScreen(
                     DataLine("Priljubljene lokacije", savedPlaceCount.toString())
                     HorizontalDivider()
                     Text(
-                        "Backup vključuje tudi nastavitve, vozila, podatke za poročila in surove GPS točke posameznih voženj.",
+                        "Backup vključuje tudi nastavitve, vozila, podatke za poročila, surove GPS točke in dodane priloge posameznih voženj.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -203,7 +203,7 @@ fun BackupScreen(
             onDismissRequest = { pendingRestore = null },
             title = { Text("Obnovim varnostno kopijo?") },
             text = {
-                Text("Obstoječe vožnje, GPS točke, priljubljene lokacije, vozila in nastavitve bodo zamenjane s podatki iz izbrane kopije. Dejanja brez druge varnostne kopije ni mogoče razveljaviti.")
+                Text("Obstoječe vožnje, GPS točke, priloge, priljubljene lokacije, vozila in nastavitve bodo zamenjane s podatki iz izbrane kopije. Dejanja brez druge varnostne kopije ni mogoče razveljaviti.")
             },
             confirmButton = {
                 Button(onClick = {

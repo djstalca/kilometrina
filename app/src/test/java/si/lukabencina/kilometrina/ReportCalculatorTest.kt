@@ -3,6 +3,7 @@ package si.lukabencina.kilometrina
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 import si.lukabencina.kilometrina.ui.ReportCalculator
 
 class ReportCalculatorTest {
@@ -21,6 +22,19 @@ class ReportCalculatorTest {
         assertEquals(2.5, summary.parkingAmount, 0.001)
         assertEquals(10.0, summary.tollsAmount, 0.001)
         assertEquals(77.0, summary.totalAmount, 0.001)
+    }
+
+    @Test
+    fun excludesPrivateTripsFromReimbursement() {
+        val business = trip(1, 20_000.0, 0.43, 200, 300)
+        val privateTrip = trip(2, 100_000.0, 0.43, 500, 900).copy(tripKind = TripKinds.PRIVATE)
+
+        val summary = ReportCalculator.summarize(listOf(business, privateTrip))
+
+        assertEquals(1, summary.tripCount)
+        assertEquals(20.0, summary.distanceKm, 0.001)
+        assertEquals(8.6, summary.mileageAmount, 0.001)
+        assertEquals(13.6, summary.totalAmount, 0.001)
     }
 
     @Test

@@ -21,6 +21,7 @@ data class AppSettings(
     val vehicleName: String = "",
     val registrationPlate: String = "",
     val autoDetectionEnabled: Boolean = false,
+    val calendarSuggestionsEnabled: Boolean = false,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -31,6 +32,7 @@ class SettingsRepository(private val context: Context) {
     private val vehicleNameKey = stringPreferencesKey("vehicle_name")
     private val registrationPlateKey = stringPreferencesKey("registration_plate")
     private val autoDetectionKey = booleanPreferencesKey("auto_detection_enabled")
+    private val calendarSuggestionsKey = booleanPreferencesKey("calendar_suggestions_enabled")
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
@@ -41,6 +43,7 @@ class SettingsRepository(private val context: Context) {
             vehicleName = prefs[vehicleNameKey].orEmpty(),
             registrationPlate = prefs[registrationPlateKey].orEmpty(),
             autoDetectionEnabled = prefs[autoDetectionKey] ?: false,
+            calendarSuggestionsEnabled = prefs[calendarSuggestionsKey] ?: false,
         )
     }
 
@@ -77,6 +80,10 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { it[autoDetectionKey] = enabled }
     }
 
+    suspend fun setCalendarSuggestionsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[calendarSuggestionsKey] = enabled }
+    }
+
     suspend fun replaceAll(settings: AppSettings) {
         context.dataStore.edit { prefs ->
             prefs[rateKey] = settings.ratePerKm.coerceIn(0.0, 10.0)
@@ -86,6 +93,7 @@ class SettingsRepository(private val context: Context) {
             prefs[vehicleNameKey] = settings.vehicleName.trim().take(100)
             prefs[registrationPlateKey] = settings.registrationPlate.trim().uppercase().take(24)
             prefs[autoDetectionKey] = settings.autoDetectionEnabled
+            prefs[calendarSuggestionsKey] = settings.calendarSuggestionsEnabled
         }
     }
 }

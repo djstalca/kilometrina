@@ -316,6 +316,19 @@ private fun TripRow(trip: TripEntity, onOpen: () -> Unit, onEdit: () -> Unit, on
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
+                    if (trip.gpsQuality == "POOR" || trip.gpsQuality == "MISSING") {
+                        Text(
+                            if (trip.gpsQuality == "MISSING") "GPS zapis manjka – preveri vožnjo" else "GPS zapis je slab – preveri traso",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (trip.gpsQuality == "FAIR") {
+                        Text(
+                            "GPS zapis: sprejemljiv",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = "Uredi vožnjo") }
                 IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Izbriši vožnjo") }

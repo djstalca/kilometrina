@@ -6,6 +6,7 @@ import android.location.Location
 import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import si.lukabencina.kilometrina.location.SegmentEvaluation
 import si.lukabencina.kilometrina.location.TrackingMath
@@ -20,18 +21,40 @@ class TripRepository(
     private val context: Context,
     private val dao: TripDao,
     private val savedPlaceRepository: SavedPlaceRepository,
+    private val settingsRepository: SettingsRepository,
+    private val calendarSuggestionRepository: CalendarSuggestionRepository,
 ) {
     val trips: Flow<List<TripEntity>> = dao.observeTrips()
     val activeTrip: Flow<TripEntity?> = dao.observeActiveTrip()
+    val attachments: Flow<List<AttachmentEntity>> = dao.observeAttachments()
 
     suspend fun getActiveTrip(): TripEntity? = dao.getActiveTrip()
     suspend fun getRoutePoints(tripId: Long): List<LocationPointEntity> = dao.getPointsForTrip(tripId)
+    suspend fun getAttachments(tripId: Long): List<AttachmentEntity> = dao.getAttachmentsForTrip(tripId)
+
+    suspend fun addAttachment(tripId: Long, displayName: String, mimeType: String, data: ByteArray): Long {
+        require(data.isNotEmpty()) { "Priloga je prazna." }
+        require(data.size <= 10 * 1024 * 1024) { "Priloga je večja od 10 MB." }
+        val cleanMime = mimeType.trim().ifBlank { "application/octet-stream" }.take(120)
+        require(cleanMime == "application/pdf" || cleanMime.startsWith("image/")) { "Podprte so slike in PDF dokumenti." }
+        return dao.insertAttachment(
+            AttachmentEntity(
+                tripId = tripId,
+                displayName = displayName.trim().ifBlank { "Priloga" }.take(180),
+                mimeType = cleanMime,
+                data = data,
+            ),
+        )
+    }
+
+    suspend fun deleteAttachment(id: Long) = dao.deleteAttachment(id)
 
     suspend fun startTrip(
         location: Location,
         purpose: String,
         ratePerKm: Double,
         vehicle: Vehicle?,
+        tripKind: String = TripKinds.BUSINESS,
     ): Long {
         val address = smartLocationLabel(location.latitude, location.longitude)
         val timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
@@ -46,6 +69,7 @@ class TripRepository(
                 vehicleId = vehicle?.id.orEmpty(),
                 vehicleName = vehicle?.name.orEmpty(),
                 registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                tripKind = normalizeTripKind(tripKind),
             ),
         )
         dao.insertPoint(
@@ -81,6 +105,7 @@ class TripRepository(
                 parkingCents = trip.parkingCents.coerceAtLeast(0),
                 vehicleName = trip.vehicleName.trim().take(80),
                 registrationPlate = trip.registrationPlate.trim().uppercase().take(24),
+                tripKind = normalizeTripKind(trip.tripKind),
             ),
         )
     }
@@ -151,17 +176,29 @@ class TripRepository(
         val address = finalLocation?.let {
             matchedPlace?.name ?: reverseGeocode(it.latitude, it.longitude)
         }
-        val smartPurpose = matchedPlace?.defaultPurpose
-            ?.takeIf { it.isNotBlank() && active.purpose.trim().equals("Službena pot", ignoreCase = true) }
-            ?: active.purpose
+        val endTime = System.currentTimeMillis()
+        val genericPurpose = active.purpose.trim().equals("Službena pot", ignoreCase = true)
+        val savedPlacePurpose = matchedPlace?.defaultPurpose?.takeIf { it.isNotBlank() && genericPurpose }
+        val settings = settingsRepository.settings.first()
+        val calendarSuggestion = if (settings.calendarIntegrationEnabled && genericPurpose && savedPlacePurpose == null) {
+            calendarSuggestionRepository.findBestSuggestion(active.startTime, endTime)
+        } else {
+            null
+        }
+        val smartPurpose = savedPlacePurpose ?: calendarSuggestion?.title ?: active.purpose
+        val gpsAssessment = assessGps(dao.getPointsForTrip(active.id))
 
         dao.updateTrip(
             active.copy(
-                endTime = System.currentTimeMillis(),
+                endTime = endTime,
                 endLat = finalLocation?.latitude,
                 endLon = finalLocation?.longitude,
                 endAddress = address ?: "Lokacija ni na voljo",
                 purpose = smartPurpose,
+                gpsQuality = gpsAssessment.quality,
+                gpsWarning = gpsAssessment.warning,
+                calendarEventId = calendarSuggestion?.eventId,
+                calendarTitle = calendarSuggestion?.title.orEmpty(),
             ),
         )
     }
@@ -180,11 +217,32 @@ class TripRepository(
                 parkingCents = trip.parkingCents.coerceAtLeast(0),
                 vehicleName = trip.vehicleName.trim().take(80),
                 registrationPlate = trip.registrationPlate.trim().uppercase().take(24),
+                tripKind = normalizeTripKind(trip.tripKind),
             ),
         )
     }
 
     suspend fun deleteTrip(id: Long) = dao.deleteTrip(id)
+
+    private data class GpsAssessment(val quality: String, val warning: String)
+
+    private fun assessGps(points: List<LocationPointEntity>): GpsAssessment {
+        if (points.size < 2) return GpsAssessment(GpsQuality.POOR, "GPS trasa nima dovolj točk.")
+        val sorted = points.sortedBy { it.timestamp }
+        val averageAccuracy = sorted.map { it.accuracyMeters.toDouble() }.average()
+        val maxGapSeconds = sorted.zipWithNext { a, b -> ((b.timestamp - a.timestamp).coerceAtLeast(0L) / 1000L) }
+            .maxOrNull() ?: 0L
+        return when {
+            maxGapSeconds > 120L || averageAccuracy > 35.0 ->
+                GpsAssessment(GpsQuality.POOR, "Preveri traso: zaznan je daljši GPS izpad ali slabša natančnost.")
+            maxGapSeconds > 45L || averageAccuracy > 20.0 ->
+                GpsAssessment(GpsQuality.FAIR, "GPS zapis je uporaben, vendar ni povsem enakomeren.")
+            else -> GpsAssessment(GpsQuality.GOOD, "")
+        }
+    }
+
+    private fun normalizeTripKind(value: String): String =
+        if (value == TripKinds.PRIVATE) TripKinds.PRIVATE else TripKinds.BUSINESS
 
     private suspend fun smartLocationLabel(lat: Double, lon: Double): String =
         savedPlaceRepository.displayNameFor(lat, lon) ?: reverseGeocode(lat, lon)

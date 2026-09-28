@@ -173,8 +173,6 @@ object BackupCodec {
         .put("companyName", value.companyName)
         .put("vehicleName", value.vehicleName)
         .put("registrationPlate", value.registrationPlate)
-        .put("tripType", value.tripType)
-        .put("gpsQuality", value.gpsQuality)
         .put("autoDetectionEnabled", value.autoDetectionEnabled)
         .put("calendarSuggestionsEnabled", value.calendarSuggestionsEnabled)
 
@@ -251,6 +249,8 @@ object BackupCodec {
         .put("vehicleId", value.vehicleId)
         .put("vehicleName", value.vehicleName)
         .put("registrationPlate", value.registrationPlate)
+        .put("tripType", value.tripType)
+        .put("gpsQuality", value.gpsQuality)
 
     private fun tripFromJson(obj: JSONObject) = TripEntity(
         id = obj.getLong("id"),

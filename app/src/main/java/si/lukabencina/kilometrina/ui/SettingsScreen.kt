@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -60,6 +61,7 @@ fun SettingsScreen(
     vehicleState: VehicleState,
     onSave: (Double, String, String, String) -> Unit,
     onAutoDetectionEnabled: (Boolean) -> Unit,
+    onCalendarSuggestionsEnabled: (Boolean) -> Unit,
     onSavePlace: (SavedPlace) -> Unit,
     onDeletePlace: (String) -> Unit,
     onSaveVehicle: (Vehicle, Boolean) -> Unit,
@@ -73,6 +75,8 @@ fun SettingsScreen(
     var saved by remember { mutableStateOf(false) }
     var dirty by rememberSaveable { mutableStateOf(false) }
     var permissionError by remember { mutableStateOf<String?>(null) }
+    var calendarPermissionError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     var editingPlace by remember { mutableStateOf<SavedPlace?>(null) }
     var showNewPlaceDialog by remember { mutableStateOf(false) }
     var deletePlaceCandidate by remember { mutableStateOf<SavedPlace?>(null) }
@@ -110,6 +114,17 @@ fun SettingsScreen(
         }
         if (permissions.isEmpty()) onAutoDetectionEnabled(true)
         else detectionPermissionLauncher.launch(permissions.toTypedArray())
+    }
+
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        calendarPermissionError = if (granted) null else "Brez dovoljenja za koledar predlogi ostanejo izključeni."
+        onCalendarSuggestionsEnabled(granted)
+    }
+
+    fun requestCalendarEnabled() {
+        calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
     }
 
     Column(
@@ -181,6 +196,33 @@ fun SettingsScreen(
                 )
             }
             permissionError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        }
+
+        SettingsCard("Koledar in pametni namen poti") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(if (settings.calendarSuggestionsEnabled) "Vključeno" else "Izključeno", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Če je namen še »Službena pot«, lahko aplikacija uporabi naslov časovno ustreznega dogodka iz koledarja. Podatki ostanejo lokalno.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = settings.calendarSuggestionsEnabled,
+                    onCheckedChange = { enabled ->
+                        calendarPermissionError = null
+                        if (enabled) requestCalendarEnabled() else onCalendarSuggestionsEnabled(false)
+                    },
+                )
+            }
+            calendarPermissionError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
         }
 
         SettingsCard("Vozila") {

@@ -2,6 +2,9 @@ name: Build signed release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'release/build-1.1.0-20260928'
 
 permissions:
   contents: read

@@ -113,7 +113,10 @@ fun HomeScreen(
             return@rememberLauncherForActivityResult
         }
         when (action) {
-            PendingLocationAction.Start -> onStart(purpose, description) { startState = it }
+            PendingLocationAction.Start -> onStart(purpose, description) {
+                startState = it
+                if (it is StartState.Idle) description = ""
+            }
             PendingLocationAction.Resume -> onResumeRecovered { startState = it }
             null -> Unit
         }

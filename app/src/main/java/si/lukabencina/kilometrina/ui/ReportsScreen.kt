@@ -41,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
@@ -57,8 +59,10 @@ private val reportMonthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", repo
 fun ReportsScreen(
     trips: List<TripEntity>,
     settings: AppSettings,
+    packageViewModel: MonthlyPackageViewModel = viewModel(),
 ) {
     val context = LocalContext.current
+    val packageState by packageViewModel.state.collectAsStateWithLifecycle()
     var selectedMonthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     var selectedStatsYear by rememberSaveable { mutableIntStateOf(YearMonth.now().year) }
     val selectedMonth = remember(selectedMonthValue) { YearMonth.parse(selectedMonthValue) }
@@ -69,12 +73,13 @@ fun ReportsScreen(
             YearMonth.from(date) == selectedMonth
         }
     }
-    val summary = remember(monthTrips) { ReportCalculator.summarize(monthTrips) }
+    val monthBusinessTrips = remember(monthTrips) { monthTrips.filter { it.tripType != "PRIVATE" } }
+    val summary = remember(monthBusinessTrips) { ReportCalculator.summarize(monthBusinessTrips) }
     val yearStats = remember(completedTrips, selectedStatsYear) {
         StatisticsCalculator.calculate(completedTrips, selectedStatsYear)
     }
-    val monthVehicles = remember(monthTrips) {
-        monthTrips
+    val monthVehicles = remember(monthBusinessTrips) {
+        monthBusinessTrips
             .map { listOf(it.vehicleName, it.registrationPlate).filter(String::isNotBlank).joinToString(" • ") }
             .filter(String::isNotBlank)
             .distinct()
@@ -99,6 +104,12 @@ fun ReportsScreen(
                 PdfReportExporter.write(output, monthTrips, selectedMonth, settings)
             }
         }
+    }
+
+    val packageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        if (uri != null) packageViewModel.export(uri, selectedMonth, monthTrips, settings)
     }
 
     LazyColumn(
@@ -246,6 +257,20 @@ fun ReportsScreen(
                     Icon(Icons.Outlined.TableChart, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Shrani CSV za Excel")
+                }
+                OutlinedButton(
+                    onClick = { packageLauncher.launch("kilometrina-${selectedMonth}-oddaja.zip") },
+                    enabled = monthBusinessTrips.isNotEmpty() && !packageState.working,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (packageState.working) "Pripravljam paket …" else "Oddaj mesec – PDF + CSV + priloge")
+                }
+                packageState.message?.let {
+                    Text(
+                        it,
+                        color = if (packageState.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 if (monthTrips.isEmpty()) {
                     Text(

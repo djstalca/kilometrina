@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.data.AppSettings
+import si.lukabencina.kilometrina.data.AttachmentEntity
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.Vehicle
@@ -46,6 +47,7 @@ data class HomeUiState(
     val vehicleState: VehicleState = VehicleState(),
     val recoveryRequired: Boolean = false,
     val trackingDiagnostics: TrackingDiagnosticsState = TrackingDiagnosticsState(),
+    val attachments: List<AttachmentEntity> = emptyList(),
 ) {
     val recentTrip: TripEntity?
         get() = trips.firstOrNull { it.endTime != null }
@@ -71,6 +73,12 @@ data class HomeUiState(
             .toList()
 }
 
+private data class TripData(
+    val active: TripEntity?,
+    val trips: List<TripEntity>,
+    val attachments: List<AttachmentEntity>,
+)
+
 private data class PreferencesState(
     val settings: AppSettings,
     val savedPlaces: List<SavedPlace>,
@@ -91,21 +99,29 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         PreferencesState(settings, savedPlaces, vehicles)
     }
 
-    val uiState: StateFlow<HomeUiState> = combine(
+    private val tripData = combine(
         repository.activeTrip,
         repository.trips,
+        repository.attachments,
+    ) { active, trips, attachments ->
+        TripData(active, trips, attachments)
+    }
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        tripData,
         preferences,
         recoveryRequired,
         TrackingDiagnostics.state,
-    ) { active, trips, preferencesValue, recovery, diagnostics ->
+    ) { tripDataValue, preferencesValue, recovery, diagnostics ->
         HomeUiState(
-            activeTrip = active,
-            trips = trips,
+            activeTrip = tripDataValue.active,
+            trips = tripDataValue.trips,
             settings = preferencesValue.settings,
             savedPlaces = preferencesValue.savedPlaces,
             vehicleState = preferencesValue.vehicles,
-            recoveryRequired = recovery && active != null,
+            recoveryRequired = recovery && tripDataValue.active != null,
             trackingDiagnostics = diagnostics,
+            attachments = tripDataValue.attachments,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -225,6 +241,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setCalendarIntegrationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            app.settingsRepository.setCalendarIntegrationEnabled(enabled && app.calendarSuggestionRepository.hasPermission())
+        }
+    }
+
     fun setAutoDetectionEnabled(enabled: Boolean) {
         viewModelScope.launch {
             if (enabled) {
@@ -267,6 +289,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteTrip(id: Long) {
         viewModelScope.launch { repository.deleteTrip(id) }
+    }
+
+    fun addAttachment(tripId: Long, displayName: String, mimeType: String, data: ByteArray) {
+        viewModelScope.launch { repository.addAttachment(tripId, displayName, mimeType, data) }
+    }
+
+    fun deleteAttachment(id: Long) {
+        viewModelScope.launch { repository.deleteAttachment(id) }
     }
 
     private fun hasLocationPermission(): Boolean {

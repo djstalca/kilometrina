@@ -1,5 +1,6 @@
 package si.lukabencina.kilometrina.quick
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
@@ -14,6 +15,7 @@ class KilometrinaTileService : TileService() {
         refreshTile()
     }
 
+    @SuppressLint("StartActivityAndCollapseDeprecated") // Required fallback below API 34.
     override fun onClick() {
         super.onClick()
         val intent = Intent(this, QuickTripActionActivity::class.java)
@@ -38,7 +40,6 @@ class KilometrinaTileService : TileService() {
         qsTile?.apply {
             state = if (running) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
             label = if (running) "Končaj vožnjo" else "Začni kilometrino"
-            if (Build.VERSION.SDK_INT >= 29) subtitle = if (running) "GPS sledenje aktivno" else "Hiter začetek"
             updateTile()
         }
     }

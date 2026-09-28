@@ -1,5 +1,6 @@
 package si.lukabencina.kilometrina.ui
 
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -30,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +65,18 @@ fun ReportsScreen(
 ) {
     val context = LocalContext.current
     val packageState by packageViewModel.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(packageState.shareUri) {
+        val uri = packageState.shareUri ?: return@LaunchedEffect
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Deli mesečni paket"))
+        packageViewModel.consumeShareUri()
+    }
+
     var selectedMonthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     var selectedStatsYear by rememberSaveable { mutableIntStateOf(YearMonth.now().year) }
     val selectedMonth = remember(selectedMonthValue) { YearMonth.parse(selectedMonthValue) }
@@ -264,6 +278,13 @@ fun ReportsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (packageState.working) "Pripravljam paket …" else "Oddaj mesec – PDF + CSV + priloge")
+                }
+                OutlinedButton(
+                    onClick = { packageViewModel.share(selectedMonth, monthTrips, settings) },
+                    enabled = monthBusinessTrips.isNotEmpty() && !packageState.working,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Deli mesečni paket")
                 }
                 packageState.message?.let {
                     Text(

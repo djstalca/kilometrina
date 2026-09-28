@@ -31,6 +31,7 @@ class BackupRepository(
             pointCount = incoming.points.size,
             savedPlaceCount = incoming.savedPlaces.size,
             vehicleCount = incoming.vehicles.vehicles.size,
+            attachmentCount = incoming.attachments.size,
         )
     }
 
@@ -64,4 +65,5 @@ data class BackupRestoreSummary(
     val pointCount: Int,
     val savedPlaceCount: Int,
     val vehicleCount: Int = 0,
+    val attachmentCount: Int = 0,
 )

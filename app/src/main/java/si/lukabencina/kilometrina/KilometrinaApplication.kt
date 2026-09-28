@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.StrictMode
 import si.lukabencina.kilometrina.data.AppDatabase
 import si.lukabencina.kilometrina.data.BackupRepository
+import si.lukabencina.kilometrina.data.CalendarSuggestionRepository
 import si.lukabencina.kilometrina.data.SavedPlaceRepository
 import si.lukabencina.kilometrina.data.SettingsRepository
 import si.lukabencina.kilometrina.data.TripRepository
@@ -15,11 +16,14 @@ class KilometrinaApplication : Application() {
     val settingsRepository by lazy { SettingsRepository(this) }
     val savedPlaceRepository by lazy { SavedPlaceRepository(this) }
     val vehicleRepository by lazy { VehicleRepository(this) }
+    val calendarSuggestionRepository by lazy { CalendarSuggestionRepository(this) }
     val tripRepository by lazy {
         TripRepository(
             context = this,
             dao = database.tripDao(),
             savedPlaceRepository = savedPlaceRepository,
+            settingsRepository = settingsRepository,
+            calendarSuggestionRepository = calendarSuggestionRepository,
         )
     }
     val backupRepository by lazy {

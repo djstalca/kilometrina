@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import si.lukabencina.kilometrina.data.AppSettings
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 
 object PdfReportExporter {
     private const val PAGE_WIDTH = 842
@@ -29,7 +30,7 @@ object PdfReportExporter {
         month: YearMonth,
         settings: AppSettings,
     ) {
-        val completedTrips = trips.filter { it.endTime != null }.sortedBy { it.startTime }
+        val completedTrips = trips.filter { it.endTime != null && it.tripKind != TripKinds.PRIVATE }.sortedBy { it.startTime }
         val summary = ReportCalculator.summarize(completedTrips)
         val vehicleSummary = completedTrips
             .map { listOf(it.vehicleName, it.registrationPlate).filter(String::isNotBlank).joinToString(" • ") }

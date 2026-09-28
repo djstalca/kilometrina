@@ -2,7 +2,7 @@
 
 Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilometrino, stroške in poročila.
 
-## Kilometrina 1.0
+## Kilometrina 1.1
 
 - uporabniško sproženo GPS beleženje dejansko prevožene poti,
 - foreground location service z vidnim obvestilom tudi pri ugasnjenem zaslonu,
@@ -15,8 +15,13 @@ Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilomet
 - parkirnine in cestnine,
 - mesečni PDF in CSV obračuni,
 - letna statistika, top relacije in pregled po vozilih,
-- lokalni prikaz shranjene GPS trase,
-- JSON backup/restore ter Android Auto Backup/device transfer,
+- MapLibre prikaz shranjene GPS trase in ocena kakovosti GPS zapisa,
+- službene/zasebne vožnje; zasebne so izključene iz obračuna,
+- fotografije/PDF računi kot priloge posamezni vožnji,
+- mesečni ZIP paket PDF + CSV + priloge in sistemsko deljenje,
+- domači widget in Quick Settings ploščica za hiter začetek/konec,
+- opcijski lokalni predlog namena poti iz Android/Google koledarja,
+- JSON backup schema v3 z uvozom starejših v1/v2 backupov ter Android Auto Backup/device transfer,
 - Material 3, light/dark in Material You,
 - lokalna obdelava brez uporabniškega računa, oglasov ali analitičnega SDK-ja.
 

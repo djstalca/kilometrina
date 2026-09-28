@@ -1,6 +1,6 @@
 # Politika zasebnosti – Kilometrina
 
-**Velja od:** 7. september 2026  
+**Velja od:** 28. september 2026  
 **Aplikacija:** Kilometrina  
 **Razvijalec:** Luka Benčina
 
@@ -18,7 +18,9 @@ Aplikacija lahko glede na vključene funkcije uporablja oziroma lokalno shrani:
 - podatke o vozilu in registrski oznaki,
 - parkirnine, cestnine in izračune povračila,
 - ime voznika in podjetja, če ju uporabnik vnese,
-- podatke o prepoznani aktivnosti vožnje, če uporabnik prostovoljno vključi funkcijo pametnega zaznavanja vožnje.
+- podatke o prepoznani aktivnosti vožnje, če uporabnik prostovoljno vključi funkcijo pametnega zaznavanja vožnje,
+- fotografije ali PDF priloge računov, ki jih uporabnik sam doda vožnji,
+- naslov, čas in lokacijo koledarskega dogodka, če uporabnik prostovoljno vključi lokalne predloge iz koledarja.
 
 ## Lokacija
 
@@ -29,6 +31,14 @@ Aplikacija ne uporablja dovoljenja `ACCESS_BACKGROUND_LOCATION` in lokacije ne u
 ## Pametna zaznava vožnje
 
 Pametna zaznava vožnje je privzeto izključena. Če jo uporabnik vključi, aplikacija uporablja Androidovo dovoljenje za prepoznavanje aktivnosti, da zazna verjeten začetek oziroma konec vožnje. Zaznava sama nikoli ne ustvari službene vožnje; uporabniku le prikaže predlog oziroma obvestilo.
+
+## Koledar
+
+Povezava s koledarjem je privzeto izključena. Če jo uporabnik vključi in odobri dovoljenje za branje koledarja, aplikacija lokalno poišče časovno ujemajoč se dogodek in ga lahko uporabi kot predlog namena poti. Vsebina koledarja se ne pošilja razvijalcu ali zunanjemu strežniku.
+
+## Priloge računov
+
+Uporabnik lahko k vožnji doda sliko ali PDF računa. Priloga se shrani v lokalni podatkovni bazi aplikacije in se lahko vključi v ročno varnostno kopijo ter mesečni paket za oddajo. Aplikacija prilog ne pošilja samodejno nikamor.
 
 ## Kam se podatki shranjujejo
 
@@ -53,7 +63,8 @@ Aplikacija lahko zahteva naslednja Android dovoljenja:
 - **natančna/približna lokacija:** za GPS merjenje poti,
 - **obvestila:** za prikaz aktivnega GPS sledenja in opcijskih predlogov vožnje,
 - **prepoznavanje aktivnosti:** samo, če uporabnik vključi pametno zaznavo vožnje,
-- **foreground service – location:** za uporabniško sproženo neprekinjeno merjenje poti.
+- **foreground service – location:** za uporabniško sproženo neprekinjeno merjenje poti,
+- **branje koledarja:** samo, če uporabnik vključi lokalne predloge namena iz koledarja.
 
 ## Otroci
 

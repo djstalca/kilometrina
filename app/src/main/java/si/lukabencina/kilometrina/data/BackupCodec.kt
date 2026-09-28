@@ -2,14 +2,17 @@ package si.lukabencina.kilometrina.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Base64
 
 private const val BACKUP_FORMAT = "kilometrina-backup"
-private const val BACKUP_SCHEMA_VERSION = 2
+private const val BACKUP_SCHEMA_VERSION = 3
 private const val MIN_SUPPORTED_SCHEMA_VERSION = 1
 private const val MAX_TRIPS = 50_000
 private const val MAX_POINTS = 750_000
 private const val MAX_PLACES = 2_000
 private const val MAX_VEHICLES = 100
+private const val MAX_ATTACHMENTS = 5_000
+private const val MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024
 
 data class BackupData(
     val generatedAt: Long,
@@ -18,6 +21,7 @@ data class BackupData(
     val vehicles: VehicleState = VehicleState(),
     val trips: List<TripEntity>,
     val points: List<LocationPointEntity>,
+    val attachments: List<TripAttachmentEntity> = emptyList(),
 )
 
 object BackupCodec {
@@ -31,6 +35,7 @@ object BackupCodec {
             .put("vehicles", vehicleStateToJson(data.vehicles))
             .put("trips", JSONArray().apply { data.trips.forEach { put(tripToJson(it)) } })
             .put("points", JSONArray().apply { data.points.forEach { put(pointToJson(it)) } })
+            .put("attachments", JSONArray().apply { data.attachments.forEach { put(attachmentToJson(it)) } })
         return root.toString(2)
     }
 
@@ -44,9 +49,11 @@ object BackupCodec {
         val tripsArray = root.getJSONArray("trips")
         val pointsArray = root.getJSONArray("points")
         val placesArray = root.getJSONArray("savedPlaces")
+        val attachmentsArray = if (schema >= 3) root.optJSONArray("attachments") ?: JSONArray() else JSONArray()
         require(tripsArray.length() <= MAX_TRIPS) { "Varnostna kopija vsebuje preveč voženj." }
         require(pointsArray.length() <= MAX_POINTS) { "Varnostna kopija vsebuje preveč GPS točk." }
         require(placesArray.length() <= MAX_PLACES) { "Varnostna kopija vsebuje preveč priljubljenih lokacij." }
+        require(attachmentsArray.length() <= MAX_ATTACHMENTS) { "Varnostna kopija vsebuje preveč prilog." }
 
         val settings = settingsFromJson(root.getJSONObject("settings"))
         val vehicles = if (schema >= 2 && root.has("vehicles")) {
@@ -69,7 +76,8 @@ object BackupCodec {
             }
         val points = List(pointsArray.length()) { pointFromJson(pointsArray.getJSONObject(it)) }
         val places = List(placesArray.length()) { placeFromJson(placesArray.getJSONObject(it)) }
-        validate(settings, trips, points, places, vehicles)
+        val attachments = List(attachmentsArray.length()) { attachmentFromJson(attachmentsArray.getJSONObject(it)) }
+        validate(settings, trips, points, places, vehicles, attachments)
 
         return BackupData(
             generatedAt = root.optLong("generatedAt", 0L),
@@ -78,6 +86,7 @@ object BackupCodec {
             vehicles = vehicles,
             trips = trips,
             points = points,
+            attachments = attachments,
         )
     }
 
@@ -87,6 +96,7 @@ object BackupCodec {
         points: List<LocationPointEntity>,
         places: List<SavedPlace>,
         vehicles: VehicleState,
+        attachments: List<TripAttachmentEntity>,
     ) {
         require(settings.ratePerKm.isFinite() && settings.ratePerKm in 0.0..10.0) { "Neveljavna postavka v backupu." }
         val vehicleIds = vehicles.vehicles.map { it.id }
@@ -121,6 +131,17 @@ object BackupCodec {
             require(point.segmentMeters.isFinite() && point.segmentMeters >= 0.0) { "Neveljaven GPS odsek." }
         }
 
+        val attachmentIds = attachments.map { it.id }
+        require(attachmentIds.all { it > 0L } && attachmentIds.toSet().size == attachmentIds.size) { "Neveljavni ID-ji prilog." }
+        attachments.forEach { attachment ->
+            require(attachment.tripId in validTripIds) { "Priloga nima pripadajoče vožnje." }
+            require(attachment.displayName.isNotBlank() && attachment.displayName.length <= 160) { "Neveljavno ime priloge." }
+            require(attachment.mimeType.length <= 120) { "Neveljaven tip priloge." }
+            val bytes = runCatching { Base64.getDecoder().decode(attachment.contentBase64) }.getOrNull()
+                ?: error("Priloga ni veljavno kodirana.")
+            require(bytes.size <= MAX_ATTACHMENT_BYTES) { "Posamezna priloga je prevelika." }
+        }
+
         val placeIds = places.map { it.id }
         require(placeIds.all { it.isNotBlank() } && placeIds.toSet().size == placeIds.size) { "Neveljavni ID-ji lokacij." }
         places.forEach { place ->
@@ -150,6 +171,8 @@ object BackupCodec {
         .put("companyName", value.companyName)
         .put("vehicleName", value.vehicleName)
         .put("registrationPlate", value.registrationPlate)
+        .put("tripType", value.tripType)
+        .put("gpsQuality", value.gpsQuality)
         .put("autoDetectionEnabled", value.autoDetectionEnabled)
 
     private fun settingsFromJson(obj: JSONObject) = AppSettings(
@@ -243,6 +266,8 @@ object BackupCodec {
         vehicleId = obj.optString("vehicleId", ""),
         vehicleName = obj.optString("vehicleName", ""),
         registrationPlate = obj.optString("registrationPlate", ""),
+        tripType = obj.optString("tripType", "BUSINESS").ifBlank { "BUSINESS" },
+        gpsQuality = obj.optString("gpsQuality", ""),
     )
 
     private fun pointToJson(value: LocationPointEntity) = JSONObject()
@@ -262,6 +287,23 @@ object BackupCodec {
         lon = obj.getDouble("lon"),
         accuracyMeters = obj.getDouble("accuracyMeters").toFloat(),
         segmentMeters = obj.getDouble("segmentMeters"),
+    )
+
+    private fun attachmentToJson(value: TripAttachmentEntity) = JSONObject()
+        .put("id", value.id)
+        .put("tripId", value.tripId)
+        .put("displayName", value.displayName)
+        .put("mimeType", value.mimeType)
+        .put("contentBase64", value.contentBase64)
+        .put("addedAt", value.addedAt)
+
+    private fun attachmentFromJson(obj: JSONObject) = TripAttachmentEntity(
+        id = obj.getLong("id"),
+        tripId = obj.getLong("tripId"),
+        displayName = obj.getString("displayName"),
+        mimeType = obj.optString("mimeType", "application/octet-stream"),
+        contentBase64 = obj.getString("contentBase64"),
+        addedAt = obj.optLong("addedAt", 0L),
     )
 
     private fun JSONObject.putNullable(key: String, value: Any?): JSONObject = put(key, value ?: JSONObject.NULL)

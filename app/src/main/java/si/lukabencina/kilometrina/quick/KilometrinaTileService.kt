@@ -38,7 +38,7 @@ class KilometrinaTileService : TileService() {
         qsTile?.apply {
             state = if (running) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
             label = if (running) "Končaj vožnjo" else "Začni kilometrino"
-            subtitle = if (running) "GPS sledenje aktivno" else "Hiter začetek"
+            if (Build.VERSION.SDK_INT >= 29) subtitle = if (running) "GPS sledenje aktivno" else "Hiter začetek"
             updateTile()
         }
     }

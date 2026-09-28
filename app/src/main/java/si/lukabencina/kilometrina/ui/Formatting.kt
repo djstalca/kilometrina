@@ -1,6 +1,7 @@
 package si.lukabencina.kilometrina.ui
 
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -22,9 +23,9 @@ fun formatKm(meters: Double, decimals: Int = 1): String =
 
 fun formatMoney(amount: Double): String = NumberFormat.getCurrencyInstance(slLocale).format(amount)
 
-fun tripCompensation(trip: TripEntity): Double = (trip.distanceMeters / 1000.0) * trip.ratePerKm
+fun tripCompensation(trip: TripEntity): Double = if (trip.tripKind == TripKinds.PRIVATE) 0.0 else (trip.distanceMeters / 1000.0) * trip.ratePerKm
 
-fun tripAdditionalCosts(trip: TripEntity): Double = (trip.tollsCents + trip.parkingCents) / 100.0
+fun tripAdditionalCosts(trip: TripEntity): Double = if (trip.tripKind == TripKinds.PRIVATE) 0.0 else (trip.tollsCents + trip.parkingCents) / 100.0
 
 fun tripTotalCost(trip: TripEntity): Double = tripCompensation(trip) + tripAdditionalCosts(trip)
 

@@ -40,7 +40,7 @@ object BackupCodec {
     }
 
     fun decode(raw: String): BackupData {
-        require(raw.length <= 64 * 1024 * 1024) { "Varnostna kopija je prevelika." }
+        require(raw.length <= 128 * 1024 * 1024) { "Varnostna kopija je prevelika." }
         val root = JSONObject(raw)
         require(root.optString("format") == BACKUP_FORMAT) { "Datoteka ni varnostna kopija aplikacije Kilometrina." }
         val schema = root.optInt("schemaVersion", -1)
@@ -119,6 +119,8 @@ object BackupCodec {
             require(trip.parkingCents >= 0 && trip.tollsCents >= 0) { "Neveljavni dodatni stroški." }
             require(trip.startAddress.length <= 500 && (trip.endAddress?.length ?: 0) <= 500 && trip.purpose.length <= 200) { "Predolgo besedilo v vožnji." }
             require(trip.vehicleId.length <= 100 && trip.vehicleName.length <= 80 && trip.registrationPlate.length <= 24) { "Neveljavni podatki vozila v vožnji." }
+            require(trip.tripKind == TripKinds.BUSINESS || trip.tripKind == TripKinds.PRIVATE) { "Neveljavna vrsta vožnje." }
+            require(trip.gpsQuality.length <= 20 && trip.gpsWarning.length <= 300 && trip.calendarTitle.length <= 120) { "Neveljavni dodatni podatki vožnje." }
         }
 
         val validTripIds = tripIds.toSet()

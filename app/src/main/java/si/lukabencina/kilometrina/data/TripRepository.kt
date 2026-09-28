@@ -52,6 +52,7 @@ class TripRepository(
     suspend fun startTrip(
         location: Location,
         purpose: String,
+        description: String,
         ratePerKm: Double,
         vehicle: Vehicle?,
         tripKind: String = TripKinds.BUSINESS,
@@ -64,7 +65,8 @@ class TripRepository(
                 startLat = location.latitude,
                 startLon = location.longitude,
                 startAddress = address,
-                purpose = purpose.trim().ifBlank { "Službena pot" },
+                purpose = purpose.trim().ifBlank { "Službena pot" }.take(200),
+                description = description.trim().take(500),
                 ratePerKm = ratePerKm,
                 vehicleId = vehicle?.id.orEmpty(),
                 vehicleName = vehicle?.name.orEmpty(),

@@ -3,6 +3,9 @@ package si.lukabencina.kilometrina.data
 import android.content.Context
 import android.location.Geocoder
 import android.location.Location
+import android.net.Uri
+import android.provider.OpenableColumns
+import java.util.Base64
 import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +29,44 @@ class TripRepository(
 
     suspend fun getActiveTrip(): TripEntity? = dao.getActiveTrip()
     suspend fun getRoutePoints(tripId: Long): List<LocationPointEntity> = dao.getPointsForTrip(tripId)
+    suspend fun getAttachments(tripId: Long): List<TripAttachmentEntity> = dao.getAttachmentsForTrip(tripId)
+
+    suspend fun addAttachment(tripId: Long, uri: Uri): Long = withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        val mimeType = resolver.getType(uri).orEmpty().ifBlank { "application/octet-stream" }.take(120)
+        val displayName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }?.trim()?.take(160).orEmpty().ifBlank { "Priloga" }
+        val input = resolver.openInputStream(uri) ?: error("Priloge ni bilo mogoče odpreti.")
+        val bytes = input.use { stream ->
+            val buffer = ByteArray(8192)
+            val output = java.io.ByteArrayOutputStream()
+            var total = 0
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                total += read
+                require(total <= 12 * 1024 * 1024) { "Priloga je večja od 12 MB." }
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        }
+        dao.insertAttachment(
+            TripAttachmentEntity(
+                tripId = tripId,
+                displayName = displayName,
+                mimeType = mimeType,
+                contentBase64 = Base64.getEncoder().encodeToString(bytes),
+            ),
+        )
+    }
+
+    suspend fun deleteAttachment(id: Long) = dao.deleteAttachment(id)
+
+    suspend fun setTripType(tripId: Long, tripType: String) {
+        val trip = dao.getAllTrips().firstOrNull { it.id == tripId } ?: return
+        dao.updateTrip(trip.copy(tripType = normalizeTripType(tripType)))
+    }
 
     suspend fun startTrip(
         location: Location,
@@ -81,6 +122,8 @@ class TripRepository(
                 parkingCents = trip.parkingCents.coerceAtLeast(0),
                 vehicleName = trip.vehicleName.trim().take(80),
                 registrationPlate = trip.registrationPlate.trim().uppercase().take(24),
+                tripType = normalizeTripType(trip.tripType),
+                gpsQuality = GpsQuality.MANUAL,
             ),
         )
     }
@@ -155,6 +198,7 @@ class TripRepository(
             ?.takeIf { it.isNotBlank() && active.purpose.trim().equals("Službena pot", ignoreCase = true) }
             ?: active.purpose
 
+        val gpsQuality = GpsQualityEvaluator.evaluate(dao.getPointsForTrip(active.id))
         dao.updateTrip(
             active.copy(
                 endTime = System.currentTimeMillis(),
@@ -162,6 +206,7 @@ class TripRepository(
                 endLon = finalLocation?.longitude,
                 endAddress = address ?: "Lokacija ni na voljo",
                 purpose = smartPurpose,
+                gpsQuality = gpsQuality,
             ),
         )
     }
@@ -180,11 +225,15 @@ class TripRepository(
                 parkingCents = trip.parkingCents.coerceAtLeast(0),
                 vehicleName = trip.vehicleName.trim().take(80),
                 registrationPlate = trip.registrationPlate.trim().uppercase().take(24),
+                tripType = normalizeTripType(trip.tripType),
             ),
         )
     }
 
     suspend fun deleteTrip(id: Long) = dao.deleteTrip(id)
+
+    private fun normalizeTripType(value: String): String =
+        if (value.equals("PRIVATE", ignoreCase = true)) "PRIVATE" else "BUSINESS"
 
     private suspend fun smartLocationLabel(lat: Double, lon: Double): String =
         savedPlaceRepository.displayNameFor(lat, lon) ?: reverseGeocode(lat, lon)

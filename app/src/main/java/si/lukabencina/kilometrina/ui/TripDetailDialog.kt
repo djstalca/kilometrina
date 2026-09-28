@@ -1,5 +1,10 @@
 package si.lukabencina.kilometrina.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -20,13 +25,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
@@ -47,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.launch
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.expressions.dsl.const
@@ -59,7 +70,10 @@ import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.spatialk.geojson.BoundingBox
+import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.data.LocationPointEntity
+import si.lukabencina.kilometrina.data.TripAttachmentEntity
+import si.lukabencina.kilometrina.data.TripGpsQuality
 import si.lukabencina.kilometrina.data.TripEntity
 import java.util.Locale
 import kotlin.math.ceil
@@ -71,8 +85,27 @@ import kotlin.math.tan
 fun TripDetailDialog(
     trip: TripEntity,
     routeState: TripRouteUiState,
+    onAddAttachment: (Uri) -> Unit,
+    onDeleteAttachment: (TripAttachmentEntity) -> Unit,
+    onToggleBusiness: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val attachmentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onAddAttachment(uri)
+    }
+
+    fun openAttachment(attachment: TripAttachmentEntity) {
+        val app = context.applicationContext as KilometrinaApplication
+        val file = app.attachmentRepository.fileFor(attachment)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, attachment.mimeType)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching { context.startActivity(intent) }
+            .onFailure { Toast.makeText(context, "Za to vrsto priloge ni ustrezne aplikacije.", Toast.LENGTH_LONG).show() }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth().heightIn(max = 760.dp),
@@ -114,6 +147,10 @@ fun TripDetailDialog(
                         DetailLine("Skupaj", formatMoney(tripTotalCost(trip)), emphasized = true)
                         val vehicle = listOf(trip.vehicleName, trip.registrationPlate).filter { it.isNotBlank() }.joinToString(" • ")
                         if (vehicle.isNotBlank()) DetailLine("Vozilo", vehicle)
+                        DetailLine("Tip", if (trip.isBusiness) "Službena" else "Zasebna")
+                        OutlinedButton(onClick = onToggleBusiness, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (trip.isBusiness) "Označi kot zasebno" else "Označi kot službeno")
+                        }
                     }
                 }
 
@@ -143,9 +180,84 @@ fun TripDetailDialog(
                         )
                     }
                 }
+
+                routeState.assessment?.let { assessment ->
+                    Surface(
+                        color = when (assessment.quality) {
+                            TripGpsQuality.Good -> MaterialTheme.colorScheme.secondaryContainer
+                            TripGpsQuality.Review -> MaterialTheme.colorScheme.errorContainer
+                            TripGpsQuality.NoGps -> MaterialTheme.colorScheme.surfaceContainerLow
+                        },
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                when (assessment.quality) {
+                                    TripGpsQuality.Good -> "GPS zapis: dober"
+                                    TripGpsQuality.Review -> "GPS zapis: preveri"
+                                    TripGpsQuality.NoGps -> "GPS zapis: brez trase"
+                                },
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(assessment.message, style = MaterialTheme.typography.bodySmall)
+                            if (assessment.longestGapSeconds != null && assessment.longestGapSeconds > 30) {
+                                Text("Najdaljša vrzel: ${assessment.longestGapSeconds} s", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Priloge", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { attachmentLauncher.launch(arrayOf("image/*", "application/pdf", "text/*")) }) {
+                        Icon(Icons.Outlined.AttachFile, contentDescription = null)
+                        Text(" Dodaj")
+                    }
+                }
+                if (routeState.attachments.isEmpty()) {
+                    Text("Ni shranjenih računov ali drugih prilog.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    routeState.attachments.forEach { attachment ->
+                        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.AttachFile, contentDescription = null)
+                                TextButton(onClick = { openAttachment(attachment) }, modifier = Modifier.weight(1f)) {
+                                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+                                        Text(attachment.displayName, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            formatAttachmentSize(attachment.sizeBytes),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                IconButton(onClick = { onDeleteAttachment(attachment) }) {
+                                    Icon(Icons.Outlined.Delete, contentDescription = "Izbriši prilogo")
+                                }
+                            }
+                        }
+                    }
+                }
+                routeState.message?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
+}
+
+private fun formatAttachmentSize(bytes: Long): String = when {
+    bytes >= 1024 * 1024 -> String.format(Locale.forLanguageTag("sl-SI"), "%.1f MB", bytes / 1024.0 / 1024.0)
+    bytes >= 1024 -> String.format(Locale.forLanguageTag("sl-SI"), "%.0f kB", bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 @Composable

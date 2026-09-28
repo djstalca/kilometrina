@@ -45,7 +45,7 @@ object StatisticsCalculator {
         zoneId: ZoneId = ZoneId.systemDefault(),
     ): YearStatistics {
         val completed = trips.filter { trip ->
-            trip.endTime != null && Year.from(Instant.ofEpochMilli(trip.startTime).atZone(zoneId)) == Year.of(year)
+            trip.endTime != null && trip.isBusiness && Year.from(Instant.ofEpochMilli(trip.startTime).atZone(zoneId)) == Year.of(year)
         }
 
         val months = (1..12).map { month ->

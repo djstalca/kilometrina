@@ -22,9 +22,9 @@ fun formatKm(meters: Double, decimals: Int = 1): String =
 
 fun formatMoney(amount: Double): String = NumberFormat.getCurrencyInstance(slLocale).format(amount)
 
-fun tripCompensation(trip: TripEntity): Double = (trip.distanceMeters / 1000.0) * trip.ratePerKm
+fun tripCompensation(trip: TripEntity): Double = if (trip.isBusiness) (trip.distanceMeters / 1000.0) * trip.ratePerKm else 0.0
 
-fun tripAdditionalCosts(trip: TripEntity): Double = (trip.tollsCents + trip.parkingCents) / 100.0
+fun tripAdditionalCosts(trip: TripEntity): Double = if (trip.isBusiness) (trip.tollsCents + trip.parkingCents) / 100.0 else 0.0
 
 fun tripTotalCost(trip: TripEntity): Double = tripCompensation(trip) + tripAdditionalCosts(trip)
 

@@ -167,11 +167,6 @@ object BackupCodec {
         .put("companyName", value.companyName)
         .put("vehicleName", value.vehicleName)
         .put("registrationPlate", value.registrationPlate)
-        .put("tripKind", value.tripKind)
-        .put("gpsQuality", value.gpsQuality)
-        .put("gpsWarning", value.gpsWarning)
-        .putNullable("calendarEventId", value.calendarEventId)
-        .put("calendarTitle", value.calendarTitle)
         .put("autoDetectionEnabled", value.autoDetectionEnabled)
         .put("calendarIntegrationEnabled", value.calendarIntegrationEnabled)
 
@@ -248,6 +243,11 @@ object BackupCodec {
         .put("vehicleId", value.vehicleId)
         .put("vehicleName", value.vehicleName)
         .put("registrationPlate", value.registrationPlate)
+        .put("tripKind", value.tripKind)
+        .put("gpsQuality", value.gpsQuality)
+        .put("gpsWarning", value.gpsWarning)
+        .putNullable("calendarEventId", value.calendarEventId)
+        .put("calendarTitle", value.calendarTitle)
 
     private fun tripFromJson(obj: JSONObject) = TripEntity(
         id = obj.getLong("id"),

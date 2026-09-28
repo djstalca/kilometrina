@@ -116,6 +116,7 @@ class LocationTrackingService : Service() {
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
             )
             requestLocationUpdates()
+            MileageWidgetProvider.updateAll(this@LocationTrackingService)
         }
     }
 
@@ -183,6 +184,7 @@ class LocationTrackingService : Service() {
         activeTripId = null
         TrackingDiagnostics.trackingStopped()
         ServiceCompat.stopForeground(this@LocationTrackingService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        MileageWidgetProvider.updateAll(this@LocationTrackingService)
         stopSelf()
     }
 

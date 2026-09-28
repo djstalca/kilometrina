@@ -24,6 +24,12 @@ interface TripDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPoints(points: List<LocationPointEntity>)
 
+    @Insert
+    suspend fun insertAttachment(attachment: AttachmentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAttachments(attachments: List<AttachmentEntity>)
+
     @Query("SELECT * FROM trips WHERE endTime IS NULL ORDER BY startTime DESC LIMIT 1")
     fun observeActiveTrip(): Flow<TripEntity?>
 
@@ -39,6 +45,15 @@ interface TripDao {
     @Query("SELECT * FROM location_points ORDER BY id")
     suspend fun getAllPoints(): List<LocationPointEntity>
 
+    @Query("SELECT * FROM attachments ORDER BY createdAt, id")
+    suspend fun getAllAttachments(): List<AttachmentEntity>
+
+    @Query("SELECT * FROM attachments ORDER BY createdAt DESC, id DESC")
+    fun observeAttachments(): Flow<List<AttachmentEntity>>
+
+    @Query("SELECT * FROM attachments WHERE tripId = :tripId ORDER BY createdAt, id")
+    suspend fun getAttachmentsForTrip(tripId: Long): List<AttachmentEntity>
+
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY timestamp ASC")
     suspend fun getPointsForTrip(tripId: Long): List<LocationPointEntity>
 
@@ -47,6 +62,12 @@ interface TripDao {
 
     @Query("UPDATE trips SET distanceMeters = distanceMeters + :segmentMeters WHERE id = :tripId")
     suspend fun addDistance(tripId: Long, segmentMeters: Double)
+
+    @Query("DELETE FROM attachments WHERE id = :attachmentId")
+    suspend fun deleteAttachment(attachmentId: Long)
+
+    @Query("DELETE FROM attachments")
+    suspend fun deleteAllAttachments()
 
     @Query("DELETE FROM location_points")
     suspend fun deleteAllPoints()

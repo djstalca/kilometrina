@@ -30,6 +30,8 @@ data class TripEntity(
     val endAddress: String? = null,
     val distanceMeters: Double = 0.0,
     val purpose: String = "Službena pot",
+    val description: String = "",
+    val routeStopsJson: String = "[]",
     val ratePerKm: Double = 0.43,
     val tollsCents: Int = 0,
     val parkingCents: Int = 0,

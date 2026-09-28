@@ -11,4 +11,11 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:fontFamily">sans</item>
     </style>
+    <style name="Theme.Kilometrina.QuickAction" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorAccent">@color/ic_launcher_background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

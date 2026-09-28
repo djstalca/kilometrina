@@ -62,7 +62,7 @@ object StatisticsCalculator {
         }
 
         val topRoutes = completed
-            .groupBy { "${cleanLocation(it.startAddress)} → ${cleanLocation(it.endAddress)}" }
+            .groupBy { formatTripRoute(it) }
             .map { (route, routeTrips) ->
                 RouteStatistics(
                     route = route,

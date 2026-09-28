@@ -2,7 +2,7 @@
 
 Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilometrino, stroške in poročila.
 
-## Kilometrina 1.0
+## Kilometrina 1.1
 
 - uporabniško sproženo GPS beleženje dejansko prevožene poti,
 - foreground location service z vidnim obvestilom tudi pri ugasnjenem zaslonu,
@@ -13,10 +13,16 @@ Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilomet
 - opcijska zaznava verjetne vožnje (privzeto izključena; vožnje nikoli ne začne samodejno),
 - več vozil z zgodovinskim snapshotom vozila na posamezni vožnji,
 - parkirnine in cestnine,
+- službene in zasebne vožnje; zasebne se ne vštevajo v obračun,
+- priloge računov (slike/PDF) povezane z vožnjo,
+- mesečni paket »Oddaj mesec« (PDF + CSV + priloge v ZIP),
+- home-screen widget in Quick Settings ploščica za hitri začetek/konec,
+- ocena kakovosti GPS zapisa po zaključeni vožnji,
+- opcijski lokalni predlog namena iz Android koledarja (privzeto izključen),
 - mesečni PDF in CSV obračuni,
 - letna statistika, top relacije in pregled po vozilih,
 - lokalni prikaz shranjene GPS trase,
-- JSON backup/restore ter Android Auto Backup/device transfer,
+- JSON backup/restore schema v3 z združljivostjo za stare v1/v2 backupe ter Android Auto Backup/device transfer,
 - Material 3, light/dark in Material You,
 - lokalna obdelava brez uporabniškega računa, oglasov ali analitičnega SDK-ja.
 
@@ -68,4 +74,4 @@ Politika zasebnosti je v [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 
 ## Zasebnost
 
-GPS točke, relacije, vozila, stroški in nastavitve se obdelujejo lokalno. Aplikacija nima lastnega strežnika, oglasov, analitike ali uporabniškega računa. Uporabnik lahko sam ustvari JSON backup; Android Auto Backup/device transfer sta podprta kot sistemski funkciji.
+GPS točke, relacije, vozila, stroški, priloge, nastavitve in opcijski koledarski predlogi se obdelujejo lokalno. Aplikacija nima lastnega strežnika, oglasov, analitike ali uporabniškega računa. Uporabnik lahko sam ustvari JSON backup; Android Auto Backup/device transfer sta podprta kot sistemski funkciji.

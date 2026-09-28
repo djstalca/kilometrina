@@ -121,6 +121,15 @@ fun TripsScreen(
         }
     }
 
+    val attachmentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val trip = detailCandidate
+        if (uri != null && trip != null) {
+            detailViewModel.addAttachment(trip.id, uri)
+        }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
@@ -241,6 +250,8 @@ fun TripsScreen(
         TripDetailDialog(
             trip = trip,
             routeState = routeState,
+            onAddAttachment = { attachmentLauncher.launch(arrayOf("image/*", "application/pdf")) },
+            onDeleteAttachment = { detailViewModel.deleteAttachment(trip.id, it) },
             onDismiss = {
                 detailCandidate = null
                 detailViewModel.clear()
@@ -292,6 +303,11 @@ private fun TripRow(trip: TripEntity, onOpen: () -> Unit, onEdit: () -> Unit, on
                         "${formatDate(trip.startTime)} • ${formatTime(trip.startTime)}–${trip.endTime?.let(::formatTime).orEmpty()}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        if (trip.tripType == "PRIVATE") "Zasebna vožnja" else "Službena vožnja",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (trip.tripType == "PRIVATE") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
                     )
                     if (trip.registrationPlate.isNotBlank()) {
                         Text(
@@ -346,6 +362,7 @@ private fun ManualTripDialog(
     var parking by remember { mutableStateOf("") }
     var tolls by remember { mutableStateOf("") }
     var selectedVehicleId by remember { mutableStateOf(vehicleState.defaultVehicle?.id.orEmpty()) }
+    var tripType by remember { mutableStateOf("BUSINESS") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -359,7 +376,8 @@ private fun ManualTripDialog(
                 { endAddress = it.address; if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose },
                 startDateTime, { startDateTime = it }, endDateTime, { endDateTime = it },
                 distanceKm, { distanceKm = it }, ratePerKm, { ratePerKm = it }, parking, { parking = it }, tolls, { tolls = it },
-                vehicleState.vehicles, selectedVehicleId, { selectedVehicleId = it }, errorMessage,
+                vehicleState.vehicles, selectedVehicleId, { selectedVehicleId = it },
+                tripType, { tripType = it }, errorMessage,
             )
         },
         confirmButton = {
@@ -386,6 +404,7 @@ private fun ManualTripDialog(
                         vehicleId = vehicle?.id.orEmpty(),
                         vehicleName = vehicle?.name.orEmpty(),
                         registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                        tripType = tripType,
                     ),
                 )
             }) { Text("Dodaj") }
@@ -421,6 +440,7 @@ private fun EditTripDialog(
         buildList { snapshotVehicle?.let(::add); addAll(vehicleState.vehicles) }.distinctBy { it.id }
     }
     var selectedVehicleId by remember(trip.id) { mutableStateOf(trip.vehicleId.ifBlank { vehicleState.defaultVehicle?.id.orEmpty() }) }
+    var tripType by remember(trip.id) { mutableStateOf(trip.tripType.ifBlank { "BUSINESS" }) }
     var errorMessage by remember(trip.id) { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -434,7 +454,8 @@ private fun EditTripDialog(
                 { endAddress = it.address; if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose },
                 startDateTime, { startDateTime = it }, endDateTime, { endDateTime = it },
                 distanceKm, { distanceKm = it }, ratePerKm, { ratePerKm = it }, parking, { parking = it }, tolls, { tolls = it },
-                vehicleOptions, selectedVehicleId, { selectedVehicleId = it }, errorMessage,
+                vehicleOptions, selectedVehicleId, { selectedVehicleId = it },
+                tripType, { tripType = it }, errorMessage,
             )
         },
         confirmButton = {
@@ -459,6 +480,7 @@ private fun EditTripDialog(
                         vehicleId = vehicle?.id.orEmpty(),
                         vehicleName = vehicle?.name.orEmpty(),
                         registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                        tripType = tripType,
                     ),
                 )
             }) { Text("Shrani") }
@@ -494,6 +516,8 @@ private fun TripFormFields(
     vehicles: List<Vehicle>,
     selectedVehicleId: String,
     onVehicleSelected: (String) -> Unit,
+    tripType: String,
+    onTripTypeChange: (String) -> Unit,
     errorMessage: String?,
 ) {
     Column(
@@ -502,6 +526,7 @@ private fun TripFormFields(
     ) {
         DateTimeField("Odhod", startDateTime, onStartDateTimeChange)
         DateTimeField("Prihod", endDateTime, onEndDateTimeChange)
+        TripTypeSelector(tripType, onTripTypeChange)
         OutlinedTextField(value = purpose, onValueChange = onPurposeChange, label = { Text("Namen poti") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         OutlinedTextField(value = startAddress, onValueChange = onStartAddressChange, label = { Text("Lokacija odhoda") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         QuickLocationRow(savedPlaces, recentLocations, onStartSavedPlace, onStartAddressChange)
@@ -577,6 +602,25 @@ private fun DateTimeField(label: String, value: LocalDateTime, onValueChange: (L
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text(value.format(dateTimeFormatter)) }
+    }
+}
+
+@Composable
+private fun TripTypeSelector(value: String, onChange: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Vrsta vožnje", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = value != "PRIVATE",
+                onClick = { onChange("BUSINESS") },
+                label = { Text("Službena") },
+            )
+            FilterChip(
+                selected = value == "PRIVATE",
+                onClick = { onChange("PRIVATE") },
+                label = { Text("Zasebna") },
+            )
+        }
     }
 }
 

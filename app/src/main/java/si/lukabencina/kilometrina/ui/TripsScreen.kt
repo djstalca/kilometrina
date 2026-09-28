@@ -104,10 +104,11 @@ fun TripsScreen(
             YearMonth.from(date) == selectedMonth
         }
     }
-    val monthKm = monthTrips.sumOf { it.distanceMeters } / 1000.0
-    val monthMileage = monthTrips.sumOf(::tripCompensation)
-    val monthExtras = monthTrips.sumOf(::tripAdditionalCosts)
-    val monthTotal = monthTrips.sumOf(::tripTotalCost)
+    val businessMonthTrips = remember(monthTrips) { monthTrips.filter { it.tripKind != TripKinds.PRIVATE } }
+    val monthKm = businessMonthTrips.sumOf { it.distanceMeters } / 1000.0
+    val monthMileage = businessMonthTrips.sumOf(::tripCompensation)
+    val monthExtras = businessMonthTrips.sumOf(::tripAdditionalCosts)
+    val monthTotal = businessMonthTrips.sumOf(::tripTotalCost)
     var deleteCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var editCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var detailCandidate by remember { mutableStateOf<TripEntity?>(null) }
@@ -199,7 +200,7 @@ fun TripsScreen(
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        SummaryMetric("Vožnje", monthTrips.size.toString(), Modifier.weight(1f))
+                        SummaryMetric("Službene", businessMonthTrips.size.toString(), Modifier.weight(1f))
                         SummaryMetric("Kilometri", String.format(slLocale, "%.1f km", monthKm), Modifier.weight(1f))
                         SummaryMetric("Kilometrina", formatMoney(monthMileage), Modifier.weight(1f))
                     }

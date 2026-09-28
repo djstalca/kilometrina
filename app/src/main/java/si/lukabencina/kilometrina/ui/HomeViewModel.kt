@@ -237,6 +237,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setCalendarSuggestionsEnabled(enabled: Boolean) {
+        viewModelScope.launch { app.settingsRepository.setCalendarSuggestionsEnabled(enabled) }
+    }
+
     fun saveVehicle(vehicle: Vehicle, makeDefault: Boolean) {
         viewModelScope.launch { app.vehicleRepository.upsert(vehicle, makeDefault) }
     }

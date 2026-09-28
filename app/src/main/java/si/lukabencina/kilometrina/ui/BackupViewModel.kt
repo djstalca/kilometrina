@@ -56,7 +56,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 withContext(Dispatchers.IO) {
                     val raw = readLimited(uri)
                     val summary = repository.restoreBackupJson(raw)
-                    syncDriveDetectionAfterRestore()
+                    syncPermissionsAfterRestore()
                     summary
                 }
             }.onSuccess { summary ->
@@ -71,6 +71,14 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearMessage() {
         mutableState.value = mutableState.value.copy(message = null, isError = false)
+    }
+
+    private suspend fun syncPermissionsAfterRestore() {
+        syncDriveDetectionAfterRestore()
+        val calendarEnabled = app.settingsRepository.settings.first().calendarIntegrationEnabled
+        if (calendarEnabled && !app.calendarSuggestionRepository.hasPermission()) {
+            app.settingsRepository.setCalendarIntegrationEnabled(false)
+        }
     }
 
     private suspend fun syncDriveDetectionAfterRestore() {

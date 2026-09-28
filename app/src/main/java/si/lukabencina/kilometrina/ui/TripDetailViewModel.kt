@@ -23,8 +23,8 @@ class TripDetailViewModel(application: Application) : AndroidViewModel(applicati
     private val _state = MutableStateFlow(TripRouteUiState())
     val state: StateFlow<TripRouteUiState> = _state.asStateFlow()
 
-    fun load(tripId: Long) {
-        if (_state.value.tripId == tripId && !_state.value.loading) return
+    fun load(tripId: Long, force: Boolean = false) {
+        if (!force && _state.value.tripId == tripId && !_state.value.loading) return
         _state.value = TripRouteUiState(tripId = tripId, loading = true)
         viewModelScope.launch {
             val points = runCatching { repository.getRoutePoints(tripId) }.getOrDefault(emptyList())
@@ -35,6 +35,14 @@ class TripDetailViewModel(application: Application) : AndroidViewModel(applicati
                 points = points,
                 attachments = attachments,
             )
+        }
+    }
+
+    fun deleteAttachment(id: Long) {
+        val tripId = _state.value.tripId ?: return
+        viewModelScope.launch {
+            repository.deleteAttachment(id)
+            load(tripId, force = true)
         }
     }
 

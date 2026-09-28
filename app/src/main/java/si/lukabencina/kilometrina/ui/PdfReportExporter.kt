@@ -29,7 +29,7 @@ object PdfReportExporter {
         month: YearMonth,
         settings: AppSettings,
     ) {
-        val completedTrips = trips.filter { it.endTime != null }.sortedBy { it.startTime }
+        val completedTrips = trips.filter { it.endTime != null && it.tripType != "PRIVATE" }.sortedBy { it.startTime }
         val summary = ReportCalculator.summarize(completedTrips)
         val vehicleSummary = completedTrips
             .map { listOf(it.vehicleName, it.registrationPlate).filter(String::isNotBlank).joinToString(" • ") }

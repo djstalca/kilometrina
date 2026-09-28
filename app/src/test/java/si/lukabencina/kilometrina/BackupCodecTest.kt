@@ -9,6 +9,7 @@ import si.lukabencina.kilometrina.data.BackupCodec
 import si.lukabencina.kilometrina.data.BackupData
 import si.lukabencina.kilometrina.data.LocationPointEntity
 import si.lukabencina.kilometrina.data.SavedPlace
+import si.lukabencina.kilometrina.data.TripAttachmentEntity
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.Vehicle
 import si.lukabencina.kilometrina.data.VehicleState
@@ -47,6 +48,17 @@ class BackupCodecTest {
                     vehicleId = vehicle.id,
                     vehicleName = vehicle.name,
                     registrationPlate = vehicle.registrationPlate,
+                ),
+            ),
+            attachments = listOf(
+                TripAttachmentEntity(
+                    id = "a1",
+                    tripId = 7,
+                    displayName = "parking.pdf",
+                    mimeType = "application/pdf",
+                    storedFileName = "a1.pdf",
+                    sizeBytes = 1234,
+                    createdAt = 1_800_000_500_000,
                 ),
             ),
             points = listOf(
@@ -109,6 +121,36 @@ class BackupCodecTest {
         assertEquals("VW Passat", decoded.vehicles.defaultVehicle?.name)
         assertEquals("LJ-TEST", decoded.trips.single().registrationPlate)
         assertTrue(!decoded.settings.autoDetectionEnabled)
+        assertTrue(!decoded.settings.calendarSuggestionsEnabled)
+        assertTrue(decoded.trips.single().isBusiness)
+        assertTrue(decoded.attachments.isEmpty())
+    }
+
+    @Test
+    fun readsSchemaTwoBackupWithoutNewFields() {
+        val raw = """
+            {
+              "format":"kilometrina-backup",
+              "schemaVersion":2,
+              "generatedAt":1800000000000,
+              "settings":{"ratePerKm":0.43,"defaultPurpose":"Službena pot"},
+              "savedPlaces":[],
+              "vehicles":{"defaultVehicleId":"","items":[]},
+              "trips":[{
+                "id":2,"startTime":1800000000000,"endTime":1800000600000,
+                "startLat":46.0,"startLon":14.0,"startAddress":"Ljubljana",
+                "endLat":46.1,"endLon":14.1,"endAddress":"Kranj",
+                "distanceMeters":20000.0,"purpose":"Obisk","ratePerKm":0.43,
+                "tollsCents":0,"parkingCents":0
+              }],
+              "points":[]
+            }
+        """.trimIndent()
+
+        val decoded = BackupCodec.decode(raw)
+        assertEquals(1, decoded.trips.size)
+        assertTrue(decoded.trips.single().isBusiness)
+        assertTrue(decoded.attachments.isEmpty())
     }
 
     @Test

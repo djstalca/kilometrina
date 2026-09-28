@@ -20,6 +20,7 @@ class TripRepository(
     private val context: Context,
     private val dao: TripDao,
     private val savedPlaceRepository: SavedPlaceRepository,
+    private val attachmentRepository: AttachmentRepository,
 ) {
     val trips: Flow<List<TripEntity>> = dao.observeTrips()
     val activeTrip: Flow<TripEntity?> = dao.observeActiveTrip()
@@ -184,7 +185,10 @@ class TripRepository(
         )
     }
 
-    suspend fun deleteTrip(id: Long) = dao.deleteTrip(id)
+    suspend fun deleteTrip(id: Long) {
+        attachmentRepository.deleteForTrip(id)
+        dao.deleteTrip(id)
+    }
 
     private suspend fun smartLocationLabel(lat: Double, lon: Double): String =
         savedPlaceRepository.displayNameFor(lat, lon) ?: reverseGeocode(lat, lon)

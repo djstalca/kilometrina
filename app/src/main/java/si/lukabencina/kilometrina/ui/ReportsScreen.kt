@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Button
@@ -48,7 +49,9 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import si.lukabencina.kilometrina.data.AppSettings
+import si.lukabencina.kilometrina.data.AttachmentEntity
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripKinds
 
 private val reportLocale = Locale.forLanguageTag("sl-SI")
 private val reportMonthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", reportLocale)
@@ -57,6 +60,7 @@ private val reportMonthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", repo
 fun ReportsScreen(
     trips: List<TripEntity>,
     settings: AppSettings,
+    attachments: List<AttachmentEntity>,
 ) {
     val context = LocalContext.current
     var selectedMonthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
@@ -65,6 +69,7 @@ fun ReportsScreen(
     val completedTrips = remember(trips) { trips.filter { it.endTime != null } }
     val monthTrips = remember(completedTrips, selectedMonth) {
         completedTrips.filter {
+            if (it.tripKind == TripKinds.PRIVATE) return@filter false
             val date = Instant.ofEpochMilli(it.startTime).atZone(ZoneId.systemDefault()).toLocalDate()
             YearMonth.from(date) == selectedMonth
         }
@@ -97,6 +102,16 @@ fun ReportsScreen(
         if (uri != null) {
             context.contentResolver.openOutputStream(uri)?.use { output ->
                 PdfReportExporter.write(output, monthTrips, selectedMonth, settings)
+            }
+        }
+    }
+
+    val packageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.openOutputStream(uri)?.use { output ->
+                MonthPackageExporter.write(output, trips, selectedMonth, settings, attachments)
             }
         }
     }
@@ -230,6 +245,15 @@ fun ReportsScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
+                    onClick = { packageLauncher.launch("kilometrina-${selectedMonth}-oddaja.zip") },
+                    enabled = monthTrips.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Archive, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Oddaj mesec – PDF + CSV + priloge")
+                }
+                OutlinedButton(
                     onClick = { pdfLauncher.launch("kilometrina-${selectedMonth}.pdf") },
                     enabled = monthTrips.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth(),

@@ -27,6 +27,7 @@ import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.Vehicle
 import si.lukabencina.kilometrina.data.VehicleState
+import si.lukabencina.kilometrina.data.routeStops
 import si.lukabencina.kilometrina.location.DrivingDetectionManager
 import si.lukabencina.kilometrina.location.DrivingSuggestionNotifications
 import si.lukabencina.kilometrina.location.LocationTrackingService
@@ -55,8 +56,13 @@ data class HomeUiState(
     val recentLocations: List<String>
         get() = trips.asSequence()
             .filter { it.endTime != null }
-            .flatMap { sequenceOf(it.startAddress, it.endAddress) }
-            .filterNotNull()
+            .flatMap { trip ->
+                sequence {
+                    yield(trip.startAddress)
+                    trip.routeStops().forEach { yield(it) }
+                    trip.endAddress?.let { yield(it) }
+                }
+            }
             .map(String::trim)
             .filter { it.isNotBlank() && it != "Lokacija ni na voljo" }
             .distinct()
@@ -140,7 +146,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startTrip(purpose: String, onStateChanged: (StartState) -> Unit) {
+    fun startTrip(purpose: String, description: String, onStateChanged: (StartState) -> Unit) {
         if (!hasLocationPermission()) {
             onStateChanged(StartState.Error("Dovoli natančno lokacijo za beleženje vožnje."))
             return
@@ -177,6 +183,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val tripId = repository.startTrip(
                     location = location,
                     purpose = purpose,
+                    description = description,
                     ratePerKm = state.settings.ratePerKm,
                     vehicle = state.vehicleState.defaultVehicle,
                 )

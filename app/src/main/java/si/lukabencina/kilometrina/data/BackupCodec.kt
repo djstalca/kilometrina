@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.util.Base64
 
 private const val BACKUP_FORMAT = "kilometrina-backup"
-private const val BACKUP_SCHEMA_VERSION = 3
+private const val BACKUP_SCHEMA_VERSION = 4
 private const val MIN_SUPPORTED_SCHEMA_VERSION = 1
 private const val MAX_TRIPS = 50_000
 private const val MAX_POINTS = 750_000
@@ -118,6 +118,9 @@ object BackupCodec {
             require(trip.ratePerKm.isFinite() && trip.ratePerKm in 0.0..10.0) { "Neveljavna postavka vožnje." }
             require(trip.parkingCents >= 0 && trip.tollsCents >= 0) { "Neveljavni dodatni stroški." }
             require(trip.startAddress.length <= 500 && (trip.endAddress?.length ?: 0) <= 500 && trip.purpose.length <= 200) { "Predolgo besedilo v vožnji." }
+            require(trip.description.length <= 500) { "Predolg opis vožnje." }
+            val routeStops = TripRouteCodec.decode(trip.routeStopsJson)
+            require(routeStops.size <= TripRouteCodec.MAX_STOPS && routeStops.all { it.length <= TripRouteCodec.MAX_ADDRESS_LENGTH }) { "Neveljavni postanki v vožnji." }
             require(trip.vehicleId.length <= 100 && trip.vehicleName.length <= 80 && trip.registrationPlate.length <= 24) { "Neveljavni podatki vozila v vožnji." }
             require(trip.tripKind == TripKinds.BUSINESS || trip.tripKind == TripKinds.PRIVATE) { "Neveljavna vrsta vožnje." }
             require(trip.gpsQuality.length <= 20 && trip.gpsWarning.length <= 300 && trip.calendarTitle.length <= 120) { "Neveljavni dodatni podatki vožnje." }
@@ -239,6 +242,8 @@ object BackupCodec {
         .putNullable("endAddress", value.endAddress)
         .put("distanceMeters", value.distanceMeters)
         .put("purpose", value.purpose)
+        .put("description", value.description)
+        .put("routeStops", JSONArray().apply { value.routeStops().forEach { put(it) } })
         .put("ratePerKm", value.ratePerKm)
         .put("tollsCents", value.tollsCents)
         .put("parkingCents", value.parkingCents)
@@ -263,6 +268,8 @@ object BackupCodec {
         endAddress = obj.nullableString("endAddress"),
         distanceMeters = obj.getDouble("distanceMeters"),
         purpose = obj.getString("purpose"),
+        description = obj.optString("description", ""),
+        routeStopsJson = routeStopsFromJson(obj),
         ratePerKm = obj.getDouble("ratePerKm"),
         tollsCents = obj.optInt("tollsCents", 0),
         parkingCents = obj.optInt("parkingCents", 0),
@@ -275,6 +282,17 @@ object BackupCodec {
         calendarEventId = obj.nullableLong("calendarEventId"),
         calendarTitle = obj.optString("calendarTitle", ""),
     )
+
+    private fun routeStopsFromJson(obj: JSONObject): String {
+        val array = obj.optJSONArray("routeStops") ?: return "[]"
+        require(array.length() <= TripRouteCodec.MAX_STOPS) { "Backup vsebuje preveč postankov v eni vožnji." }
+        val stops = List(array.length()) { index ->
+            array.getString(index).trim().also {
+                require(it.isNotBlank() && it.length <= TripRouteCodec.MAX_ADDRESS_LENGTH) { "Neveljaven postanek v vožnji." }
+            }
+        }
+        return TripRouteCodec.encode(stops)
+    }
 
     private fun attachmentToJson(value: AttachmentEntity) = JSONObject()
         .put("id", value.id)

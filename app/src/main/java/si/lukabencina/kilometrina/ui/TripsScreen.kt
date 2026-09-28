@@ -8,13 +8,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +34,8 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -53,13 +58,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -71,6 +80,8 @@ import si.lukabencina.kilometrina.data.AttachmentEntity
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
+import si.lukabencina.kilometrina.data.TripRouteCodec
+import si.lukabencina.kilometrina.data.routeStops
 import si.lukabencina.kilometrina.data.TripRules
 import si.lukabencina.kilometrina.data.Vehicle
 import si.lukabencina.kilometrina.data.VehicleState
@@ -326,7 +337,14 @@ private fun TripRow(
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(trip.purpose, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(tripDisplayTitle(trip), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (trip.description.isNotBlank()) {
+                        Text(
+                            trip.purpose,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(
                         "${formatDate(trip.startTime)} • ${formatTime(trip.startTime)}–${trip.endTime?.let(::formatTime).orEmpty()}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -352,7 +370,11 @@ private fun TripRow(
             if (attachmentCount > 0) {
                 Text("$attachmentCount prilog", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
-            Text("${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}")
+            Text(
+                formatTripRoute(trip),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Route, contentDescription = null)
@@ -387,9 +409,11 @@ private fun ManualTripDialog(
     var startDateTime by remember { mutableStateOf(now.minusHours(1)) }
     var endDateTime by remember { mutableStateOf(now) }
     var purpose by remember { mutableStateOf("Službena pot") }
+    var description by remember { mutableStateOf("") }
     var tripKind by remember { mutableStateOf(TripKinds.BUSINESS) }
     var startAddress by remember { mutableStateOf("") }
     var endAddress by remember { mutableStateOf("") }
+    var routeStops by remember { mutableStateOf(emptyList<String>()) }
     var distanceKm by remember { mutableStateOf("") }
     var ratePerKm by remember { mutableStateOf(decimalInput(defaultRatePerKm, 2)) }
     var parking by remember { mutableStateOf("") }
@@ -397,51 +421,79 @@ private fun ManualTripDialog(
     var selectedVehicleId by remember { mutableStateOf(vehicleState.defaultVehicle?.id.orEmpty()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Dodaj vožnjo ročno") },
-        text = {
-            TripFormFields(
-                tripKind, { tripKind = it }, purpose, { purpose = it }, startAddress, { startAddress = it }, endAddress, { endAddress = it },
-                savedPlaces, recentLocations,
-                { startAddress = it.address },
-                { endAddress = it.address; if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose },
-                startDateTime, { startDateTime = it }, endDateTime, { endDateTime = it },
-                distanceKm, { distanceKm = it }, ratePerKm, { ratePerKm = it }, parking, { parking = it }, tolls, { tolls = it },
-                vehicleState.vehicles, selectedVehicleId, { selectedVehicleId = it }, errorMessage,
+    TripEditorDialog(
+        title = "Dodaj vožnjo",
+        confirmLabel = "Dodaj",
+        onDismiss = onDismiss,
+        onConfirm = {
+            val values = validateForm(startDateTime, endDateTime, distanceKm, ratePerKm, parking, tolls)
+            if (values == null) {
+                errorMessage = "Preveri čas in številčne vrednosti. Prihod mora biti po odhodu."
+                return@TripEditorDialog
+            }
+            val vehicle = vehicleState.vehicles.firstOrNull { it.id == selectedVehicleId }
+            onSave(
+                TripEntity(
+                    startTime = toEpochMillis(startDateTime),
+                    endTime = toEpochMillis(endDateTime),
+                    startLat = 0.0,
+                    startLon = 0.0,
+                    startAddress = startAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                    endAddress = endAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                    distanceMeters = values.distanceKm * 1000.0,
+                    purpose = purpose.trim().ifBlank { "Službena pot" },
+                    description = description.trim(),
+                    routeStopsJson = TripRouteCodec.encode(routeStops),
+                    ratePerKm = values.ratePerKm,
+                    parkingCents = (values.parking * 100.0).roundToInt(),
+                    tollsCents = (values.tolls * 100.0).roundToInt(),
+                    vehicleId = vehicle?.id.orEmpty(),
+                    vehicleName = vehicle?.name.orEmpty(),
+                    registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                    tripKind = tripKind,
+                ),
             )
         },
-        confirmButton = {
-            Button(onClick = {
-                val values = validateForm(startDateTime, endDateTime, distanceKm, ratePerKm, parking, tolls)
-                if (values == null) {
-                    errorMessage = "Preveri čas in številčne vrednosti. Prihod mora biti po odhodu."
-                    return@Button
+    ) {
+        TripFormFields(
+            tripKind = tripKind,
+            onTripKindChange = { tripKind = it },
+            purpose = purpose,
+            onPurposeChange = { purpose = it },
+            description = description,
+            onDescriptionChange = { description = it },
+            startAddress = startAddress,
+            onStartAddressChange = { startAddress = it },
+            endAddress = endAddress,
+            onEndAddressChange = { endAddress = it },
+            routeStops = routeStops,
+            onRouteStopsChange = { routeStops = it },
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
+            onEndSavedPlace = {
+                endAddress = it.address
+                if (it.defaultPurpose.isNotBlank() && purpose.equals("Službena pot", ignoreCase = true)) {
+                    purpose = it.defaultPurpose
                 }
-                val vehicle = vehicleState.vehicles.firstOrNull { it.id == selectedVehicleId }
-                onSave(
-                    TripEntity(
-                        startTime = toEpochMillis(startDateTime),
-                        endTime = toEpochMillis(endDateTime),
-                        startLat = 0.0,
-                        startLon = 0.0,
-                        startAddress = startAddress.trim().ifBlank { "Lokacija ni na voljo" },
-                        endAddress = endAddress.trim().ifBlank { "Lokacija ni na voljo" },
-                        distanceMeters = values.distanceKm * 1000.0,
-                        purpose = purpose.trim().ifBlank { "Službena pot" },
-                        ratePerKm = values.ratePerKm,
-                        parkingCents = (values.parking * 100.0).roundToInt(),
-                        tollsCents = (values.tolls * 100.0).roundToInt(),
-                        vehicleId = vehicle?.id.orEmpty(),
-                        vehicleName = vehicle?.name.orEmpty(),
-                        registrationPlate = vehicle?.registrationPlate.orEmpty(),
-                        tripKind = tripKind,
-                    ),
-                )
-            }) { Text("Dodaj") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Prekliči") } },
-    )
+            },
+            startDateTime = startDateTime,
+            onStartDateTimeChange = { startDateTime = it },
+            endDateTime = endDateTime,
+            onEndDateTimeChange = { endDateTime = it },
+            distanceKm = distanceKm,
+            onDistanceKmChange = { distanceKm = it },
+            ratePerKm = ratePerKm,
+            onRatePerKmChange = { ratePerKm = it },
+            parking = parking,
+            onParkingChange = { parking = it },
+            tolls = tolls,
+            onTollsChange = { tolls = it },
+            vehicles = vehicleState.vehicles,
+            selectedVehicleId = selectedVehicleId,
+            onVehicleSelected = { selectedVehicleId = it },
+            errorMessage = errorMessage,
+        )
+    }
 }
 
 @Composable
@@ -456,9 +508,11 @@ private fun EditTripDialog(
     var startDateTime by remember(trip.id) { mutableStateOf(fromEpochMillis(trip.startTime)) }
     var endDateTime by remember(trip.id) { mutableStateOf(fromEpochMillis(requireNotNull(trip.endTime))) }
     var purpose by remember(trip.id) { mutableStateOf(trip.purpose) }
+    var description by remember(trip.id) { mutableStateOf(trip.description) }
     var tripKind by remember(trip.id) { mutableStateOf(trip.tripKind) }
     var startAddress by remember(trip.id) { mutableStateOf(trip.startAddress) }
     var endAddress by remember(trip.id) { mutableStateOf(trip.endAddress.orEmpty()) }
+    var routeStops by remember(trip.id) { mutableStateOf(trip.routeStops()) }
     var distanceKm by remember(trip.id) { mutableStateOf(decimalInput(trip.distanceMeters / 1000.0, 1)) }
     var ratePerKm by remember(trip.id) { mutableStateOf(decimalInput(trip.ratePerKm, 2)) }
     var parking by remember(trip.id) { mutableStateOf(decimalInput(trip.parkingCents / 100.0, 2)) }
@@ -474,49 +528,129 @@ private fun EditTripDialog(
     var selectedVehicleId by remember(trip.id) { mutableStateOf(trip.vehicleId.ifBlank { vehicleState.defaultVehicle?.id.orEmpty() }) }
     var errorMessage by remember(trip.id) { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Uredi vožnjo") },
-        text = {
-            TripFormFields(
-                tripKind, { tripKind = it }, purpose, { purpose = it }, startAddress, { startAddress = it }, endAddress, { endAddress = it },
-                savedPlaces, recentLocations,
-                { startAddress = it.address },
-                { endAddress = it.address; if (it.defaultPurpose.isNotBlank()) purpose = it.defaultPurpose },
-                startDateTime, { startDateTime = it }, endDateTime, { endDateTime = it },
-                distanceKm, { distanceKm = it }, ratePerKm, { ratePerKm = it }, parking, { parking = it }, tolls, { tolls = it },
-                vehicleOptions, selectedVehicleId, { selectedVehicleId = it }, errorMessage,
+    TripEditorDialog(
+        title = "Uredi vožnjo",
+        confirmLabel = "Shrani",
+        onDismiss = onDismiss,
+        onConfirm = {
+            val values = validateForm(startDateTime, endDateTime, distanceKm, ratePerKm, parking, tolls)
+            if (values == null) {
+                errorMessage = "Preveri čas in številčne vrednosti. Prihod mora biti po odhodu."
+                return@TripEditorDialog
+            }
+            val vehicle = vehicleOptions.firstOrNull { it.id == selectedVehicleId }
+            onSave(
+                trip.copy(
+                    startTime = toEpochMillis(startDateTime),
+                    endTime = toEpochMillis(endDateTime),
+                    purpose = purpose.trim().ifBlank { "Službena pot" },
+                    description = description.trim(),
+                    routeStopsJson = TripRouteCodec.encode(routeStops),
+                    startAddress = startAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                    endAddress = endAddress.trim().ifBlank { "Lokacija ni na voljo" },
+                    distanceMeters = values.distanceKm * 1000.0,
+                    ratePerKm = values.ratePerKm,
+                    parkingCents = (values.parking * 100.0).roundToInt(),
+                    tollsCents = (values.tolls * 100.0).roundToInt(),
+                    vehicleId = vehicle?.id.orEmpty(),
+                    vehicleName = vehicle?.name.orEmpty(),
+                    registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                    tripKind = tripKind,
+                ),
             )
         },
-        confirmButton = {
-            Button(onClick = {
-                val values = validateForm(startDateTime, endDateTime, distanceKm, ratePerKm, parking, tolls)
-                if (values == null) {
-                    errorMessage = "Preveri čas in številčne vrednosti. Prihod mora biti po odhodu."
-                    return@Button
+    ) {
+        TripFormFields(
+            tripKind = tripKind,
+            onTripKindChange = { tripKind = it },
+            purpose = purpose,
+            onPurposeChange = { purpose = it },
+            description = description,
+            onDescriptionChange = { description = it },
+            startAddress = startAddress,
+            onStartAddressChange = { startAddress = it },
+            endAddress = endAddress,
+            onEndAddressChange = { endAddress = it },
+            routeStops = routeStops,
+            onRouteStopsChange = { routeStops = it },
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
+            onEndSavedPlace = {
+                endAddress = it.address
+                if (it.defaultPurpose.isNotBlank() && purpose.equals("Službena pot", ignoreCase = true)) {
+                    purpose = it.defaultPurpose
                 }
-                val vehicle = vehicleOptions.firstOrNull { it.id == selectedVehicleId }
-                onSave(
-                    trip.copy(
-                        startTime = toEpochMillis(startDateTime),
-                        endTime = toEpochMillis(endDateTime),
-                        purpose = purpose.trim().ifBlank { "Službena pot" },
-                        startAddress = startAddress.trim().ifBlank { "Lokacija ni na voljo" },
-                        endAddress = endAddress.trim().ifBlank { "Lokacija ni na voljo" },
-                        distanceMeters = values.distanceKm * 1000.0,
-                        ratePerKm = values.ratePerKm,
-                        parkingCents = (values.parking * 100.0).roundToInt(),
-                        tollsCents = (values.tolls * 100.0).roundToInt(),
-                        vehicleId = vehicle?.id.orEmpty(),
-                        vehicleName = vehicle?.name.orEmpty(),
-                        registrationPlate = vehicle?.registrationPlate.orEmpty(),
-                        tripKind = tripKind,
-                    ),
+            },
+            startDateTime = startDateTime,
+            onStartDateTimeChange = { startDateTime = it },
+            endDateTime = endDateTime,
+            onEndDateTimeChange = { endDateTime = it },
+            distanceKm = distanceKm,
+            onDistanceKmChange = { distanceKm = it },
+            ratePerKm = ratePerKm,
+            onRatePerKmChange = { ratePerKm = it },
+            parking = parking,
+            onParkingChange = { parking = it },
+            tolls = tolls,
+            onTollsChange = { tolls = it },
+            vehicles = vehicleOptions,
+            selectedVehicleId = selectedVehicleId,
+            onVehicleSelected = { selectedVehicleId = it },
+            errorMessage = errorMessage,
+        )
+    }
+}
+
+@Composable
+private fun TripEditorDialog(
+    title: String,
+    confirmLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.94f)
+                .imePadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+        ) {
+            Column {
+                Text(
+                    title,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
                 )
-            }) { Text("Shrani") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Prekliči") } },
-    )
+                HorizontalDivider()
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                ) {
+                    content()
+                }
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Prekliči") }
+                    Spacer(Modifier.width(8.dp))
+                    Button(onClick = onConfirm) { Text(confirmLabel) }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -525,13 +659,16 @@ private fun TripFormFields(
     onTripKindChange: (String) -> Unit,
     purpose: String,
     onPurposeChange: (String) -> Unit,
+    description: String,
+    onDescriptionChange: (String) -> Unit,
     startAddress: String,
     onStartAddressChange: (String) -> Unit,
     endAddress: String,
     onEndAddressChange: (String) -> Unit,
+    routeStops: List<String>,
+    onRouteStopsChange: (List<String>) -> Unit,
     savedPlaces: List<SavedPlace>,
     recentLocations: List<String>,
-    onStartSavedPlace: (SavedPlace) -> Unit,
     onEndSavedPlace: (SavedPlace) -> Unit,
     startDateTime: LocalDateTime,
     onStartDateTimeChange: (LocalDateTime) -> Unit,
@@ -550,10 +687,7 @@ private fun TripFormFields(
     onVehicleSelected: (String) -> Unit,
     errorMessage: String?,
 ) {
-    Column(
-        modifier = Modifier.heightIn(max = 580.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = tripKind == TripKinds.BUSINESS,
@@ -566,17 +700,110 @@ private fun TripFormFields(
                 label = { Text("Zasebna") },
             )
         }
+
         DateTimeField("Odhod", startDateTime, onStartDateTimeChange)
         DateTimeField("Prihod", endDateTime, onEndDateTimeChange)
-        OutlinedTextField(value = purpose, onValueChange = onPurposeChange, label = { Text("Namen poti") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = startAddress, onValueChange = onStartAddressChange, label = { Text("Lokacija odhoda") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        QuickLocationRow(savedPlaces, recentLocations, onStartSavedPlace, onStartAddressChange)
-        OutlinedTextField(value = endAddress, onValueChange = onEndAddressChange, label = { Text("Lokacija prihoda") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        QuickLocationRow(savedPlaces, recentLocations, onEndSavedPlace, onEndAddressChange)
+
+        OutlinedTextField(
+            value = purpose,
+            onValueChange = { onPurposeChange(it.take(200)) },
+            label = { Text("Namen poti") },
+            supportingText = { Text("Razlog službene poti, npr. servis, montaža ali obisk stranke.") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = description,
+            onValueChange = { onDescriptionChange(it.take(500)) },
+            label = { Text("Opis vožnje") },
+            supportingText = { Text("Kratek opis, kaj si na tej vožnji opravil.") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
+            maxLines = 4,
+        )
+
+        Text("Relacija", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        LocationField(
+            label = "Lokacija odhoda",
+            value = startAddress,
+            onValueChange = onStartAddressChange,
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
+        )
+
+        routeStops.forEachIndexed { index, stop ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    LocationField(
+                        label = "Postanek ${index + 1}",
+                        value = stop,
+                        onValueChange = { value ->
+                            onRouteStopsChange(routeStops.toMutableList().also { it[index] = value })
+                        },
+                        savedPlaces = savedPlaces,
+                        recentLocations = recentLocations,
+                    )
+                }
+                Column {
+                    IconButton(
+                        onClick = {
+                            val updated = routeStops.toMutableList()
+                            val item = updated.removeAt(index)
+                            updated.add(index - 1, item)
+                            onRouteStopsChange(updated)
+                        },
+                        enabled = index > 0,
+                    ) {
+                        Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = "Premakni postanek gor")
+                    }
+                    IconButton(
+                        onClick = {
+                            val updated = routeStops.toMutableList()
+                            val item = updated.removeAt(index)
+                            updated.add(index + 1, item)
+                            onRouteStopsChange(updated)
+                        },
+                        enabled = index < routeStops.lastIndex,
+                    ) {
+                        Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Premakni postanek dol")
+                    }
+                    IconButton(
+                        onClick = { onRouteStopsChange(routeStops.toMutableList().also { it.removeAt(index) }) },
+                    ) {
+                        Icon(Icons.Outlined.Delete, contentDescription = "Odstrani postanek")
+                    }
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = { onRouteStopsChange(routeStops + "") },
+            enabled = routeStops.size < TripRouteCodec.MAX_STOPS,
+        ) {
+            Icon(Icons.Outlined.Add, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Dodaj postanek")
+        }
+
+        LocationField(
+            label = "Lokacija prihoda",
+            value = endAddress,
+            onValueChange = onEndAddressChange,
+            savedPlaces = savedPlaces,
+            recentLocations = recentLocations,
+            onSavedPlace = onEndSavedPlace,
+        )
 
         Text("Vozilo", style = MaterialTheme.typography.labelLarge)
         if (vehicles.isEmpty()) {
-            Text("Ni dodanega vozila. Dodaš ga lahko v Nastavitvah.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Ni dodanega vozila. Dodaš ga lahko v Nastavitvah.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(vehicles, key = { it.id }) { vehicle ->
@@ -598,17 +825,67 @@ private fun TripFormFields(
 }
 
 @Composable
+private fun LocationField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    savedPlaces: List<SavedPlace>,
+    recentLocations: List<String>,
+    onSavedPlace: (SavedPlace) -> Unit = { onValueChange(it.address) },
+) {
+    var focused by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { onValueChange(it.take(TripRouteCodec.MAX_ADDRESS_LENGTH)) },
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+            singleLine = true,
+        )
+        if (focused) {
+            QuickLocationRow(
+                query = value,
+                savedPlaces = savedPlaces,
+                recentLocations = recentLocations,
+                onSavedPlace = onSavedPlace,
+                onRecentLocation = onValueChange,
+            )
+        }
+    }
+}
+
+@Composable
 private fun QuickLocationRow(
+    query: String,
     savedPlaces: List<SavedPlace>,
     recentLocations: List<String>,
     onSavedPlace: (SavedPlace) -> Unit,
     onRecentLocation: (String) -> Unit,
 ) {
+    val normalizedQuery = query.trim().lowercase()
+    val saved = remember(savedPlaces, normalizedQuery) {
+        savedPlaces
+            .filter {
+                normalizedQuery.isBlank() ||
+                    it.name.lowercase().contains(normalizedQuery) ||
+                    it.address.lowercase().contains(normalizedQuery)
+            }
+            .take(5)
+    }
     val savedAddresses = remember(savedPlaces) { savedPlaces.map { it.address.trim().lowercase() }.toSet() }
-    val recent = remember(recentLocations, savedAddresses) { recentLocations.filterNot { it.trim().lowercase() in savedAddresses }.take(4) }
-    if (savedPlaces.isEmpty() && recent.isEmpty()) return
+    val recent = remember(recentLocations, savedAddresses, normalizedQuery) {
+        recentLocations
+            .map(String::trim)
+            .filter { it.isNotBlank() && !isRawCoordinateLocation(it) }
+            .filterNot { it.lowercase() in savedAddresses }
+            .filter { normalizedQuery.isBlank() || it.lowercase().contains(normalizedQuery) }
+            .distinct()
+            .take(5)
+    }
+    if (saved.isEmpty() && recent.isEmpty()) return
+
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(savedPlaces.take(6), key = { "saved-${it.id}" }) { place ->
+        items(saved, key = { "saved-${it.id}" }) { place ->
             SuggestionChip(onClick = { onSavedPlace(place) }, label = { Text(place.name) })
         }
         items(recent, key = { "recent-$it" }) { address ->
@@ -616,6 +893,12 @@ private fun QuickLocationRow(
         }
     }
 }
+
+private val rawCoordinateLocation = Regex(
+    """^\s*-?\d{1,3}(?:[.,]\d+)?\s*,\s*-?\d{1,3}(?:[.,]\d+)?\s*$""",
+)
+
+private fun isRawCoordinateLocation(value: String): Boolean = rawCoordinateLocation.matches(value)
 
 @Composable
 private fun DateTimeField(label: String, value: LocalDateTime, onValueChange: (LocalDateTime) -> Unit) {

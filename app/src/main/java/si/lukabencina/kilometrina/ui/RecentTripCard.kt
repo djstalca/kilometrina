@@ -37,7 +37,11 @@ fun RecentTripCard(trip: TripEntity, onOpenTrips: () -> Unit) {
                 Text("Zadnja vožnja", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Icon(Icons.Outlined.ArrowForward, contentDescription = "Odpri vožnje")
             }
-            Text("${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}")
+            Text(tripDisplayTitle(trip), fontWeight = FontWeight.Medium)
+            if (trip.description.isNotBlank()) {
+                Text(trip.purpose, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(formatTripRoute(trip))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

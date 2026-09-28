@@ -3,6 +3,7 @@ package si.lukabencina.kilometrina
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripRouteCodec
 import si.lukabencina.kilometrina.ui.CsvExporter
 
 class CsvExporterTest {
@@ -20,6 +21,8 @@ class CsvExporterTest {
             endAddress = "Zagreb, Hrvaška",
             distanceMeters = 100_000.0,
             purpose = "Obisk stranke",
+            description = "Servis in predaja opreme",
+            routeStopsJson = TripRouteCodec.encode(listOf("Celje, Slovenija")),
             ratePerKm = 0.43,
             parkingCents = 250,
             tollsCents = 700,
@@ -28,6 +31,10 @@ class CsvExporterTest {
         val csv = CsvExporter.build(listOf(trip))
 
         assertTrue(csv.contains("Obisk stranke"))
+        assertTrue(csv.contains("Servis in predaja opreme"))
+        assertTrue(csv.contains("Celje, Slovenija"))
+        assertTrue(csv.contains("Relacija"))
+        assertTrue(csv.contains("Opis"))
         assertTrue(csv.contains("100,00"))
         assertTrue(csv.contains("43,00"))
         assertTrue(csv.contains("2,50"))

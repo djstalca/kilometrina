@@ -94,7 +94,14 @@ fun TripDetailDialog(
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(trip.purpose, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        Text(tripDisplayTitle(trip), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        if (trip.description.isNotBlank()) {
+                            Text(
+                                trip.purpose,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                         Text(
                             "${formatDate(trip.startTime)} • ${formatTime(trip.startTime)}–${trip.endTime?.let(::formatTime).orEmpty()}",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -110,7 +117,9 @@ fun TripDetailDialog(
                     shape = MaterialTheme.shapes.large,
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RouteDetailLine("${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}")
+                        RouteDetailLine(formatTripRoute(trip))
+                        DetailLine("Namen", trip.purpose)
+                        if (trip.description.isNotBlank()) DetailLine("Opis", trip.description)
                         DetailLine("Razdalja", formatKm(trip.distanceMeters))
                         DetailLine("Postavka", String.format(Locale.forLanguageTag("sl-SI"), "%.2f €/km", trip.ratePerKm))
                         DetailLine("Kilometrina", formatMoney(tripCompensation(trip)))

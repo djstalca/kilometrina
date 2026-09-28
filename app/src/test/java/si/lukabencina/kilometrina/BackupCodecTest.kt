@@ -12,6 +12,8 @@ import si.lukabencina.kilometrina.data.LocationPointEntity
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
+import si.lukabencina.kilometrina.data.TripRouteCodec
+import si.lukabencina.kilometrina.data.routeStops
 import si.lukabencina.kilometrina.data.Vehicle
 import si.lukabencina.kilometrina.data.VehicleState
 
@@ -43,6 +45,8 @@ class BackupCodecTest {
                     endAddress = "Zagreb",
                     distanceMeters = 140_500.0,
                     purpose = "Obisk stranke",
+                    description = "Predstavitev in servis opreme",
+                    routeStopsJson = TripRouteCodec.encode(listOf("Celje", "Maribor")),
                     ratePerKm = 0.43,
                     tollsCents = 720,
                     parkingCents = 250,
@@ -110,6 +114,8 @@ class BackupCodecTest {
         assertEquals(1, decoded.vehicles.vehicles.size)
         assertEquals("VW Passat", decoded.vehicles.defaultVehicle?.name)
         assertEquals("LJ-TEST", decoded.trips.single().registrationPlate)
+        assertEquals("", decoded.trips.single().description)
+        assertTrue(decoded.trips.single().routeStops().isEmpty())
         assertTrue(!decoded.settings.autoDetectionEnabled)
     }
 
@@ -151,6 +157,8 @@ class BackupCodecTest {
 
         assertEquals(TripKinds.BUSINESS, trip.tripKind)
         assertEquals("UNKNOWN", trip.gpsQuality)
+        assertEquals("", trip.description)
+        assertTrue(trip.routeStops().isEmpty())
         assertTrue(decoded.attachments.isEmpty())
         assertTrue(!decoded.settings.calendarIntegrationEnabled)
     }

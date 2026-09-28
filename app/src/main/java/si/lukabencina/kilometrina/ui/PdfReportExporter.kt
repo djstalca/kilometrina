@@ -139,15 +139,16 @@ object PdfReportExporter {
     private data class Column(val title: String, val width: Float, val align: Paint.Align = Paint.Align.LEFT)
 
     private val columns = listOf(
-        Column("Datum", 55f),
-        Column("Relacija", 185f),
-        Column("Namen", 115f),
-        Column("Vozilo", 90f),
-        Column("km", 45f, Paint.Align.RIGHT),
-        Column("€/km", 45f, Paint.Align.RIGHT),
-        Column("Kilometrina", 65f, Paint.Align.RIGHT),
-        Column("Dodatni", 60f, Paint.Align.RIGHT),
-        Column("Skupaj", 65f, Paint.Align.RIGHT),
+        Column("Datum", 50f),
+        Column("Relacija", 160f),
+        Column("Namen", 85f),
+        Column("Opis", 120f),
+        Column("Vozilo", 80f),
+        Column("km", 40f, Paint.Align.RIGHT),
+        Column("€/km", 42f, Paint.Align.RIGHT),
+        Column("Kilometrina", 60f, Paint.Align.RIGHT),
+        Column("Dodatni", 55f, Paint.Align.RIGHT),
+        Column("Skupaj", 60f, Paint.Align.RIGHT),
     )
 
     private fun drawTableHeader(canvas: Canvas, y: Float) {
@@ -169,12 +170,13 @@ object PdfReportExporter {
             canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + ROW_HEIGHT, background)
         }
         val paint = textPaint(7.2f, color = Color.rgb(38, 43, 51))
-        val route = "${shortLocation(trip.startAddress)} → ${shortLocation(trip.endAddress)}"
+        val route = formatTripRoute(trip)
         val vehicle = listOf(trip.vehicleName, trip.registrationPlate).filter(String::isNotBlank).joinToString(" • ")
         val values = listOf(
             formatDate(trip.startTime),
             route,
             trip.purpose,
+            trip.description,
             vehicle,
             number(trip.distanceMeters / 1000.0, 1),
             number(trip.ratePerKm, 2),

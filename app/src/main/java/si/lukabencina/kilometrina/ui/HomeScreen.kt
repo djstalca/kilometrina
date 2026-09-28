@@ -69,7 +69,7 @@ private enum class PendingLocationAction {
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
-    onStart: (String, (StartState) -> Unit) -> Unit,
+    onStart: (String, String, (StartState) -> Unit) -> Unit,
     onStop: () -> Unit,
     onResumeRecovered: ((StartState) -> Unit) -> Unit,
     onFinishRecovered: () -> Unit,
@@ -77,6 +77,7 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     var purpose by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
     var lastAppliedDefaultPurpose by rememberSaveable { mutableStateOf("") }
     var startState by remember { mutableStateOf<StartState>(StartState.Idle) }
     var pendingAction by remember { mutableStateOf<PendingLocationAction?>(null) }
@@ -112,7 +113,10 @@ fun HomeScreen(
             return@rememberLauncherForActivityResult
         }
         when (action) {
-            PendingLocationAction.Start -> onStart(purpose) { startState = it }
+            PendingLocationAction.Start -> onStart(purpose, description) {
+                startState = it
+                if (it is StartState.Idle) description = ""
+            }
             PendingLocationAction.Resume -> onResumeRecovered { startState = it }
             null -> Unit
         }
@@ -169,6 +173,8 @@ fun HomeScreen(
                 ReadyCard(
                     purpose = purpose,
                     onPurposeChange = { purpose = it },
+                    description = description,
+                    onDescriptionChange = { description = it },
                     purposeSuggestions = purposeSuggestions,
                     ratePerKm = uiState.settings.ratePerKm,
                     startState = startState,
@@ -239,6 +245,8 @@ fun HomeScreen(
 private fun ReadyCard(
     purpose: String,
     onPurposeChange: (String) -> Unit,
+    description: String,
+    onDescriptionChange: (String) -> Unit,
     purposeSuggestions: List<Pair<String, String>>,
     ratePerKm: Double,
     startState: StartState,
@@ -279,10 +287,20 @@ private fun ReadyCard(
 
             OutlinedTextField(
                 value = purpose,
-                onValueChange = onPurposeChange,
+                onValueChange = { onPurposeChange(it.take(200)) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Namen poti") },
                 singleLine = true,
+            )
+
+            OutlinedTextField(
+                value = description,
+                onValueChange = { onDescriptionChange(it.take(500)) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Opis vožnje") },
+                supportingText = { Text("Kaj boš na tej vožnji opravil.") },
+                minLines = 2,
+                maxLines = 3,
             )
 
             if (purposeSuggestions.isNotEmpty()) {
@@ -388,6 +406,13 @@ private fun ActiveTripCard(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(trip.purpose, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
+                    if (trip.description.isNotBlank()) {
+                        Text(
+                            trip.description,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
 

@@ -1,6 +1,6 @@
 # Politika zasebnosti – Kilometrina
 
-**Velja od:** 7. september 2026  
+**Velja od:** 28. september 2026  
 **Aplikacija:** Kilometrina  
 **Razvijalec:** Luka Benčina
 
@@ -18,7 +18,9 @@ Aplikacija lahko glede na vključene funkcije uporablja oziroma lokalno shrani:
 - podatke o vozilu in registrski oznaki,
 - parkirnine, cestnine in izračune povračila,
 - ime voznika in podjetja, če ju uporabnik vnese,
-- podatke o prepoznani aktivnosti vožnje, če uporabnik prostovoljno vključi funkcijo pametnega zaznavanja vožnje.
+- podatke o prepoznani aktivnosti vožnje, če uporabnik prostovoljno vključi funkcijo pametnega zaznavanja vožnje,
+- fotografije ali PDF račune, ki jih uporabnik prostovoljno pripne posamezni vožnji,
+- naslov koledarskega dogodka, če uporabnik prostovoljno vključi predloge iz koledarja.
 
 ## Lokacija
 
@@ -29,6 +31,14 @@ Aplikacija ne uporablja dovoljenja `ACCESS_BACKGROUND_LOCATION` in lokacije ne u
 ## Pametna zaznava vožnje
 
 Pametna zaznava vožnje je privzeto izključena. Če jo uporabnik vključi, aplikacija uporablja Androidovo dovoljenje za prepoznavanje aktivnosti, da zazna verjeten začetek oziroma konec vožnje. Zaznava sama nikoli ne ustvari službene vožnje; uporabniku le prikaže predlog oziroma obvestilo.
+
+## Koledar
+
+Predlogi iz koledarja so privzeto izključeni. Če jih uporabnik vključi in dovoli branje koledarja, aplikacija lokalno poišče časovno ustrezen dogodek ter lahko njegov naslov predlaga kot namen službene poti. Vsebina koledarja se ne pošilja razvijalcu ali lastnemu strežniku aplikacije.
+
+## Priloge in računi
+
+Uporabnik lahko posamezni vožnji pripne fotografijo ali PDF dokument. Kopija izbrane priloge se shrani v lokalni podatkovni prostor aplikacije in je lahko vključena v ročno varnostno kopijo ali uporabniško ustvarjen mesečni paket za oddajo. Deljenje takšnega paketa se izvede samo po uporabnikovem dejanju prek Androidovega sistemskega vmesnika za deljenje.
 
 ## Kam se podatki shranjujejo
 
@@ -53,7 +63,8 @@ Aplikacija lahko zahteva naslednja Android dovoljenja:
 - **natančna/približna lokacija:** za GPS merjenje poti,
 - **obvestila:** za prikaz aktivnega GPS sledenja in opcijskih predlogov vožnje,
 - **prepoznavanje aktivnosti:** samo, če uporabnik vključi pametno zaznavo vožnje,
-- **foreground service – location:** za uporabniško sproženo neprekinjeno merjenje poti.
+- **foreground service – location:** za uporabniško sproženo neprekinjeno merjenje poti,
+- **branje koledarja:** samo, če uporabnik vključi koledarske predloge za namen poti.
 
 ## Otroci
 

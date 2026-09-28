@@ -893,7 +893,7 @@ private fun QuickLocationRow(
 }
 
 private val rawCoordinateLocation = Regex(
-    """^\\s*-?\\d{1,3}(?:[.,]\\d+)?\\s*,\\s*-?\\d{1,3}(?:[.,]\\d+)?\\s*$""",
+    """^\s*-?\d{1,3}(?:[.,]\d+)?\s*,\s*-?\d{1,3}(?:[.,]\d+)?\s*$""",
 )
 
 private fun isRawCoordinateLocation(value: String): Boolean = rawCoordinateLocation.matches(value)

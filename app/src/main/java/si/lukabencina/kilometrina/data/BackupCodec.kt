@@ -176,6 +176,7 @@ object BackupCodec {
         .put("tripType", value.tripType)
         .put("gpsQuality", value.gpsQuality)
         .put("autoDetectionEnabled", value.autoDetectionEnabled)
+        .put("calendarSuggestionsEnabled", value.calendarSuggestionsEnabled)
 
     private fun settingsFromJson(obj: JSONObject) = AppSettings(
         ratePerKm = obj.getDouble("ratePerKm"),
@@ -185,6 +186,7 @@ object BackupCodec {
         vehicleName = obj.optString("vehicleName", ""),
         registrationPlate = obj.optString("registrationPlate", ""),
         autoDetectionEnabled = obj.optBoolean("autoDetectionEnabled", false),
+        calendarSuggestionsEnabled = obj.optBoolean("calendarSuggestionsEnabled", false),
     )
 
     private fun vehicleStateToJson(value: VehicleState) = JSONObject()

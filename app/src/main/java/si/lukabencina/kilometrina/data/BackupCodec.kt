@@ -243,7 +243,7 @@ object BackupCodec {
         .put("distanceMeters", value.distanceMeters)
         .put("purpose", value.purpose)
         .put("description", value.description)
-        .put("routeStops", JSONArray().apply { value.routeStops().forEach(::put) })
+        .put("routeStops", JSONArray().apply { value.routeStops().forEach { put(it) } })
         .put("ratePerKm", value.ratePerKm)
         .put("tollsCents", value.tollsCents)
         .put("parkingCents", value.parkingCents)

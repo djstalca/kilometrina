@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TripEntity::class, LocationPointEntity::class],
-    version = 2,
+    entities = [TripEntity::class, LocationPointEntity::class, AttachmentEntity::class],
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,13 +24,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE trips ADD COLUMN tripKind TEXT NOT NULL DEFAULT 'BUSINESS'")
+                db.execSQL("ALTER TABLE trips ADD COLUMN gpsQuality TEXT NOT NULL DEFAULT 'UNKNOWN'")
+                db.execSQL("ALTER TABLE trips ADD COLUMN gpsWarning TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE trips ADD COLUMN calendarEventId INTEGER")
+                db.execSQL("ALTER TABLE trips ADD COLUMN calendarTitle TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS attachments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        tripId INTEGER NOT NULL,
+                        displayName TEXT NOT NULL,
+                        mimeType TEXT NOT NULL,
+                        data BLOB NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        FOREIGN KEY(tripId) REFERENCES trips(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )""".trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_attachments_tripId ON attachments(tripId)")
+            }
+        }
+
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "kilometrina.db",
             )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

@@ -1,6 +1,6 @@
 # Google Play Data Safety – delovni list
 
-Ta dokument opisuje dejansko vedenje aplikacije Kilometrina 1.0.0 in služi kot osnova pri izpolnjevanju obrazca Data safety v Play Console.
+Ta dokument opisuje dejansko vedenje aplikacije Kilometrina 1.1.0 in služi kot osnova pri izpolnjevanju obrazca Data safety v Play Console.
 
 ## Povzetek
 
@@ -9,6 +9,8 @@ Ta dokument opisuje dejansko vedenje aplikacije Kilometrina 1.0.0 in služi kot 
 - Lokacija, GPS točke, vožnje, stroški, vozila in profil se obdelujejo lokalno.
 - Lokalni crash zapis ostane na napravi in se ne pošilja razvijalcu.
 - Ročni JSON backup ustvari uporabnik in sam izbere cilj datoteke.
+- Fotografije/PDF priloge k vožnjam se hranijo lokalno in so vključene v backup oziroma mesečni paket samo po uporabnikovem dejanju.
+- Opcijsko branje koledarja se uporablja samo lokalno za predlog namena poti.
 - Android Auto Backup/device transfer upravlja operacijski sistem oziroma uporabnikov sistemski ponudnik backupa.
 
 ## Podatki, ki jih aplikacija uporablja lokalno
@@ -62,3 +64,14 @@ Ker aplikacija nima uporabniškega računa ali strežniške kopije pri razvijalc
 ## Pred oddajo
 
 V Play Console še enkrat preveri obrazec glede na točno verzijo AAB-ja, ker Google spreminja vprašanja in definicije. Ta dokument ne nadomešča aktualnega Data Safety obrazca.
+
+
+### Calendar
+
+**Koledarski dogodki:** samo če uporabnik prostovoljno vključi koledarske predloge in odobri READ_CALENDAR. Aplikacija lokalno uporabi naslov časovno ustreznega dogodka kot možen namen službene poti.  
+**Poslano razvijalcu:** NE.
+
+### Files / attachments
+
+Uporabnik lahko izbere fotografijo ali PDF računa in jo pripne vožnji. Kopija ostane lokalno. Uporabnik lahko sam ustvari ZIP mesečni paket ali ga deli prek sistemskega Android share dialoga.  
+**Samodejno poslano razvijalcu:** NE.

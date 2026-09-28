@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.location.DrivingDetectionManager
 
-private const val MAX_BACKUP_BYTES = 64 * 1024 * 1024
+private const val MAX_BACKUP_BYTES = 128 * 1024 * 1024
 
 data class BackupUiState(
     val working: Boolean = false,
@@ -61,7 +61,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }.onSuccess { summary ->
                 mutableState.value = BackupUiState(
-                    message = "Obnovljeno: ${summary.tripCount} voženj, ${summary.savedPlaceCount} lokacij, ${summary.vehicleCount} vozil in ${summary.pointCount} GPS točk.",
+                    message = "Obnovljeno: ${summary.tripCount} voženj, ${summary.savedPlaceCount} lokacij, ${summary.vehicleCount} vozil, ${summary.pointCount} GPS točk in ${summary.attachmentCount} prilog.",
                 )
             }.onFailure {
                 mutableState.value = BackupUiState(message = it.message ?: "Obnovitev ni uspela.", isError = true)
@@ -98,7 +98,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 val read = stream.read(buffer)
                 if (read < 0) break
                 total += read
-                if (total > MAX_BACKUP_BYTES) error("Varnostna kopija je večja od 64 MB.")
+                if (total > MAX_BACKUP_BYTES) error("Varnostna kopija je večja od 128 MB.")
                 output.write(buffer, 0, read)
             }
             return output.toString(Charsets.UTF_8.name())

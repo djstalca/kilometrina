@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -616,6 +617,7 @@ private fun TripEditorDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.94f)
+                .imePadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             shape = MaterialTheme.shapes.extraLarge,
             tonalElevation = 6.dp,

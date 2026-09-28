@@ -18,7 +18,7 @@ object TripRouteCodec {
 
     fun encode(stops: List<String>): String {
         val clean = sanitize(stops)
-        return JSONArray().apply { clean.forEach(::put) }.toString()
+        return JSONArray().apply { clean.forEach { put(it) } }.toString()
     }
 
     fun normalize(raw: String): String = encode(decode(raw))

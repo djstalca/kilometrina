@@ -91,7 +91,6 @@ fun TripsScreen(
     onUpdateTrip: (TripEntity) -> Unit,
     onAddManualTrip: (TripEntity) -> Unit,
     onAddAttachment: (Long, String, String, ByteArray) -> Unit,
-    onDeleteAttachment: (Long) -> Unit,
     detailViewModel: TripDetailViewModel = viewModel(),
 ) {
     val context = LocalContext.current
@@ -272,6 +271,7 @@ fun TripsScreen(
         TripDetailDialog(
             trip = trip,
             routeState = routeState,
+            onDeleteAttachment = detailViewModel::deleteAttachment,
             onDismiss = {
                 detailCandidate = null
                 detailViewModel.clear()

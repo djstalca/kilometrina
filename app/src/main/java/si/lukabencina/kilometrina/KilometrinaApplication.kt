@@ -20,6 +20,7 @@ class KilometrinaApplication : Application() {
             context = this,
             dao = database.tripDao(),
             savedPlaceRepository = savedPlaceRepository,
+            settingsRepository = settingsRepository,
         )
     }
     val backupRepository by lazy {

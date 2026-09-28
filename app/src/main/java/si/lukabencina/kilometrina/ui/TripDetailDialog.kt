@@ -2,6 +2,7 @@ package si.lukabencina.kilometrina.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +65,7 @@ import org.maplibre.compose.style.BaseStyle
 import org.maplibre.spatialk.geojson.BoundingBox
 import si.lukabencina.kilometrina.data.LocationPointEntity
 import si.lukabencina.kilometrina.data.TripEntity
+import si.lukabencina.kilometrina.data.TripAttachmentEntity
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.ln
@@ -75,6 +77,7 @@ fun TripDetailDialog(
     trip: TripEntity,
     routeState: TripRouteUiState,
     onAddAttachment: () -> Unit = {},
+    onOpenAttachment: (TripAttachmentEntity) -> Unit = {},
     onDeleteAttachment: (Long) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
@@ -144,7 +147,7 @@ fun TripDetailDialog(
                 } else {
                     routeState.attachments.forEach { attachment ->
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().clickable { onOpenAttachment(attachment) },
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

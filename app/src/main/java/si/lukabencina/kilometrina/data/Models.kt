@@ -33,6 +33,7 @@ data class TripEntity(
     val description: String = "",
     val routeStopsJson: String = "[]",
     val routeDetectionVersion: Int = 0,
+    val routeReviewPending: Boolean = false,
     val ratePerKm: Double = 0.43,
     val tollsCents: Int = 0,
     val parkingCents: Int = 0,

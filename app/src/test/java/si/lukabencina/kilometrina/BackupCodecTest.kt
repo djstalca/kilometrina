@@ -47,6 +47,7 @@ class BackupCodecTest {
                     purpose = "Obisk stranke",
                     description = "Predstavitev in servis opreme",
                     routeStopsJson = TripRouteCodec.encode(listOf("Celje", "Maribor")),
+                    routeDetectionVersion = 1,
                     ratePerKm = 0.43,
                     tollsCents = 720,
                     parkingCents = 250,

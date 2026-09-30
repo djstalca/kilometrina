@@ -56,6 +56,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 withContext(Dispatchers.IO) {
                     val raw = readLimited(uri)
                     val summary = repository.restoreBackupJson(raw)
+                    app.savedPlaceRepository.resolveMissingCoordinates()
+                    app.tripRepository.refreshAutomaticRoutes()
                     syncPermissionsAfterRestore()
                     summary
                 }

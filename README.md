@@ -2,7 +2,7 @@
 
 Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilometrino, stroške in poročila.
 
-## Kilometrina 1.1.2
+## Kilometrina 1.1.3
 
 - uporabniško sproženo GPS beleženje dejansko prevožene poti,
 - foreground location service z vidnim obvestilom tudi pri ugasnjenem zaslonu,
@@ -11,6 +11,7 @@ Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilomet
 - ločen namen poti in opis vožnje,
 - več postankov oziroma relacij z urejanjem vrstnega reda,
 - samodejna zaznava daljših postankov iz GPS trase in sestava relacije,
+- po samodejno zaznanem postanku se relacija prikaže za Potrdi/Uredi,
 - samodejno poimenovanje shranjenih lokacij po GPS območju; Prodent je prednastavljen kot Zvezna ulica 2A, Ljubljana,
 - predlogi lokacij samo pri aktivnem polju, brez surovih GPS koordinat med običajnimi predlogi,
 - recovery nedokončane vožnje,
@@ -27,7 +28,7 @@ Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilomet
 - mesečni PDF in CSV obračuni,
 - letna statistika, top relacije in pregled po vozilih,
 - lokalni prikaz shranjene GPS trase,
-- JSON backup/restore schema v5 z združljivostjo za stare v1/v2/v3/v4 backupe ter Android Auto Backup/device transfer,
+- JSON backup/restore schema v6 z združljivostjo za stare v1/v2/v3/v4/v5 backupe ter Android Auto Backup/device transfer,
 - Material 3, light/dark in Material You,
 - lokalna obdelava brez uporabniškega računa, oglasov ali analitičnega SDK-ja.
 

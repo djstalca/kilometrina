@@ -401,7 +401,7 @@ private fun SavedPlaceDialog(place: SavedPlace?, onDismiss: () -> Unit, onSave: 
     var name by remember(place?.id) { mutableStateOf(place?.name.orEmpty()) }
     var address by remember(place?.id) { mutableStateOf(place?.address.orEmpty()) }
     var defaultPurpose by remember(place?.id) { mutableStateOf(place?.defaultPurpose.orEmpty()) }
-    var radiusText by remember(place?.id) { mutableStateOf((place?.matchRadiusMeters ?: 200).toString()) }
+    var radiusText by remember(place?.id) { mutableStateOf((place?.matchRadiusMeters ?: 150).toString()) }
     val radius = radiusText.toIntOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -435,7 +435,7 @@ private fun SavedPlaceDialog(place: SavedPlace?, onDismiss: () -> Unit, onSave: 
                             defaultPurpose = defaultPurpose,
                             lat = place?.takeIf { it.address.trim().equals(address.trim(), ignoreCase = true) }?.lat,
                             lon = place?.takeIf { it.address.trim().equals(address.trim(), ignoreCase = true) }?.lon,
-                            matchRadiusMeters = (radius ?: 200).coerceIn(100, 1500),
+                            matchRadiusMeters = (radius ?: 150).coerceIn(100, 1500),
                         ),
                     )
                 },

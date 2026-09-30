@@ -53,6 +53,9 @@ data class HomeUiState(
     val recentTrip: TripEntity?
         get() = trips.firstOrNull { it.endTime != null }
 
+    val routeReviewTrip: TripEntity?
+        get() = trips.firstOrNull { it.endTime != null && it.routeReviewPending }
+
     val recentLocations: List<String>
         get() = trips.asSequence()
             .filter { it.endTime != null }
@@ -296,6 +299,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateTrip(trip: TripEntity) {
         viewModelScope.launch { repository.updateCompletedTrip(trip) }
+    }
+
+    fun confirmRouteReview(id: Long) {
+        viewModelScope.launch { repository.confirmRouteReview(id) }
     }
 
     fun deleteTrip(id: Long) {

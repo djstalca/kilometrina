@@ -48,6 +48,7 @@ class BackupCodecTest {
                     description = "Predstavitev in servis opreme",
                     routeStopsJson = TripRouteCodec.encode(listOf("Celje", "Maribor")),
                     routeDetectionVersion = 1,
+                    routeReviewPending = true,
                     ratePerKm = 0.43,
                     tollsCents = 720,
                     parkingCents = 250,
@@ -117,6 +118,7 @@ class BackupCodecTest {
         assertEquals("LJ-TEST", decoded.trips.single().registrationPlate)
         assertEquals("", decoded.trips.single().description)
         assertTrue(decoded.trips.single().routeStops().isEmpty())
+        assertTrue(!decoded.trips.single().routeReviewPending)
         assertTrue(!decoded.settings.autoDetectionEnabled)
     }
 
@@ -160,6 +162,7 @@ class BackupCodecTest {
         assertEquals("UNKNOWN", trip.gpsQuality)
         assertEquals("", trip.description)
         assertTrue(trip.routeStops().isEmpty())
+        assertTrue(!trip.routeReviewPending)
         assertTrue(decoded.attachments.isEmpty())
         assertTrue(!decoded.settings.calendarIntegrationEnabled)
     }

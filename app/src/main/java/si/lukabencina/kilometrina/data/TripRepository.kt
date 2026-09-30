@@ -104,6 +104,7 @@ class TripRepository(
                 description = trip.description.trim().take(500),
                 routeStopsJson = TripRouteCodec.normalize(trip.routeStopsJson),
                 routeDetectionVersion = 1,
+                routeReviewPending = false,
                 distanceMeters = trip.distanceMeters.coerceAtLeast(0.0),
                 ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
                 tollsCents = trip.tollsCents.coerceAtLeast(0),
@@ -207,6 +208,7 @@ class TripRepository(
                 purpose = smartPurpose,
                 routeStopsJson = TripRouteCodec.encode(automaticStops),
                 routeDetectionVersion = 1,
+                routeReviewPending = automaticStops.isNotEmpty(),
                 gpsQuality = gpsAssessment.quality,
                 gpsWarning = gpsAssessment.warning,
                 calendarEventId = calendarSuggestion?.eventId,
@@ -246,6 +248,7 @@ class TripRepository(
                         endAddress = endAddress,
                         routeStopsJson = TripRouteCodec.encode(stops),
                         routeDetectionVersion = 1,
+                        routeReviewPending = false,
                     ),
                 )
             }
@@ -262,6 +265,7 @@ class TripRepository(
                 description = trip.description.trim().take(500),
                 routeStopsJson = TripRouteCodec.normalize(trip.routeStopsJson),
                 routeDetectionVersion = 1,
+                routeReviewPending = false,
                 distanceMeters = trip.distanceMeters.coerceAtLeast(0.0),
                 ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
                 tollsCents = trip.tollsCents.coerceAtLeast(0),
@@ -272,6 +276,8 @@ class TripRepository(
             ),
         )
     }
+
+    suspend fun confirmRouteReview(id: Long) = dao.confirmRouteReview(id)
 
     suspend fun deleteTrip(id: Long) = dao.deleteTrip(id)
 

@@ -74,6 +74,8 @@ fun HomeScreen(
     onResumeRecovered: ((StartState) -> Unit) -> Unit,
     onFinishRecovered: () -> Unit,
     onOpenTrips: () -> Unit,
+    onConfirmRouteReview: (Long) -> Unit,
+    onEditRouteReview: (Long) -> Unit,
 ) {
     val context = LocalContext.current
     var purpose by rememberSaveable { mutableStateOf("") }
@@ -195,6 +197,39 @@ fun HomeScreen(
 
         uiState.recentTrip?.let { recent ->
             RecentTripCard(recent, onOpenTrips)
+        }
+    }
+
+    if (uiState.activeTrip == null) {
+        uiState.routeReviewTrip?.let { trip ->
+            AlertDialog(
+                onDismissRequest = { },
+                title = { Text("Preveri zaznano relacijo") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Iz GPS trase sem samodejno zaznal postanek in sestavil relacijo:")
+                        Text(
+                            formatTripRoute(trip),
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            "Če je relacija pravilna, jo potrdi. Če postanek ni pravilen ali kaj manjka, jo lahko takoj urediš.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { onConfirmRouteReview(trip.id) }) {
+                        Text("Potrdi")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { onEditRouteReview(trip.id) }) {
+                        Text("Uredi")
+                    }
+                },
+            )
         }
     }
 

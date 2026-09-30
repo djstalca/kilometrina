@@ -102,6 +102,8 @@ fun TripsScreen(
     onUpdateTrip: (TripEntity) -> Unit,
     onAddManualTrip: (TripEntity) -> Unit,
     onAddAttachment: (Long, String, String, ByteArray) -> Unit,
+    initialEditTripId: Long? = null,
+    onInitialEditConsumed: () -> Unit = {},
     detailViewModel: TripDetailViewModel = viewModel(),
 ) {
     val context = LocalContext.current
@@ -125,6 +127,15 @@ fun TripsScreen(
     var detailCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
     var attachmentCandidate by remember { mutableStateOf<TripEntity?>(null) }
+
+    LaunchedEffect(initialEditTripId, completedTrips) {
+        val tripId = initialEditTripId ?: return@LaunchedEffect
+        completedTrips.firstOrNull { it.id == tripId }?.let { trip ->
+            selectedMonthValue = YearMonth.from(fromEpochMillis(trip.startTime)).toString()
+            editCandidate = trip
+            onInitialEditConsumed()
+        }
+    }
 
     LaunchedEffect(detailCandidate?.id) {
         detailCandidate?.let { detailViewModel.load(it.id) }

@@ -1,5 +1,6 @@
 package si.lukabencina.kilometrina
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import si.lukabencina.kilometrina.data.TripEntity
@@ -43,5 +44,6 @@ class CsvExporterTest {
         assertTrue(csv.contains("Parkirnina EUR"))
         assertTrue(csv.contains("Cestnina EUR"))
         assertTrue(csv.contains("Skupaj EUR"))
+        assertFalse(csv.contains("Postavka EUR/km"))
     }
 }

@@ -19,7 +19,7 @@ object PdfReportExporter {
     private const val MARGIN = 28f
     private const val TABLE_TOP = 116f
     private const val HEADER_ROW_HEIGHT = 26f
-    private const val TRIP_ROW_HEIGHT = 56f
+    private const val TRIP_ROW_HEIGHT = 68f
     private const val TABLE_BOTTOM = 532f
 
     private val locale = Locale.forLanguageTag("sl-SI")
@@ -168,7 +168,8 @@ object PdfReportExporter {
         val datePaint = textPaint(7.4f, color = Color.rgb(55, 61, 70))
         val titlePaint = textPaint(8.4f, bold = true, color = Color.rgb(32, 37, 45))
         val routePaint = textPaint(7.4f, color = Color.rgb(45, 51, 60))
-        val metaPaint = textPaint(6.6f, color = Color.rgb(92, 99, 109))
+        val metaPaint = textPaint(6.8f, color = Color.rgb(92, 99, 109))
+        val costPaint = textPaint(7.0f, color = Color.rgb(68, 75, 85))
         val numberPaint = textPaint(8.2f, bold = true, color = Color.rgb(32, 37, 45)).apply {
             textAlign = Paint.Align.RIGHT
         }
@@ -189,27 +190,29 @@ object PdfReportExporter {
 
         val title = trip.description.trim().ifBlank { trip.purpose }
         val route = formatTripRoute(trip)
-        val meta = buildString {
-            if (trip.description.isNotBlank()) {
-                append("Namen: ")
-                append(trip.purpose)
-                append(" • ")
-            }
-            append(number(trip.ratePerKm, 2))
-            append(" €/km • kilometrina ")
+        val purposeMeta = if (trip.description.isNotBlank()) "Namen: ${trip.purpose}" else ""
+        val costs = buildString {
+            append("Kilometrina ")
             append(money(tripCompensation(trip)))
-            if (tripAdditionalCosts(trip) > 0.0) {
-                append(" • dodatni ")
-                append(money(tripAdditionalCosts(trip)))
+            if (trip.parkingCents > 0) {
+                append(" • Parkirnina ")
+                append(money(trip.parkingCents / 100.0))
+            }
+            if (trip.tollsCents > 0) {
+                append(" • Cestnina ")
+                append(money(trip.tollsCents / 100.0))
             }
         }
 
         canvas.drawText(fitText(title, detailsWidth, titlePaint), detailsX, y + 15f, titlePaint)
         canvas.drawText(fitText(route, detailsWidth, routePaint), detailsX, y + 31f, routePaint)
-        canvas.drawText(fitText(meta, detailsWidth, metaPaint), detailsX, y + 46f, metaPaint)
+        if (purposeMeta.isNotBlank()) {
+            canvas.drawText(fitText(purposeMeta, detailsWidth, metaPaint), detailsX, y + 46f, metaPaint)
+        }
+        canvas.drawText(fitText(costs, detailsWidth, costPaint), detailsX, y + 60f, costPaint)
 
-        canvas.drawText(number(trip.distanceMeters / 1000.0, 1), kmRight, y + 31f, numberPaint)
-        canvas.drawText(money(tripTotalCost(trip)), totalRight, y + 31f, numberPaint)
+        canvas.drawText(number(trip.distanceMeters / 1000.0, 1), kmRight, y + 35f, numberPaint)
+        canvas.drawText(money(tripTotalCost(trip)), totalRight, y + 35f, numberPaint)
 
         val line = Paint().apply {
             color = Color.rgb(229, 232, 237)

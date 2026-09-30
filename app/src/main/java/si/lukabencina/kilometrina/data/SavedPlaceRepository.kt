@@ -92,9 +92,9 @@ class SavedPlaceRepository(private val context: Context) {
         replaceAll(resolved)
     }
 
-    suspend fun seedDefaultPlacesIfNeeded() {
+    suspend fun seedDefaultPlacesIfNeeded(force: Boolean = false) {
         val snapshot = context.savedPlacesDataStore.data.first()
-        if (snapshot[defaultsSeededKey] == true) return
+        if (!force && snapshot[defaultsSeededKey] == true) return
 
         val current = snapshot[placesKey].orEmpty().mapNotNull(SavedPlaceCodec::decode).toMutableList()
         val alreadyHasProdent = current.any { place ->

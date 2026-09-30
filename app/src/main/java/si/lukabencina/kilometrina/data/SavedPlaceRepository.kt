@@ -107,7 +107,7 @@ class SavedPlaceRepository(private val context: Context) {
                     id = "builtin-prodent",
                     name = "Prodent",
                     address = "Zvezna ulica 2A, 1000 Ljubljana",
-                    matchRadiusMeters = 200,
+                    matchRadiusMeters = 150,
                 ),
             )
         }

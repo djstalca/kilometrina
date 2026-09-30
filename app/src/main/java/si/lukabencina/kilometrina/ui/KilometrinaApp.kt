@@ -38,6 +38,7 @@ private enum class MainTab(val label: String) {
 fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTabName by rememberSaveable { mutableStateOf(MainTab.Home.name) }
+    var editTripId by rememberSaveable { mutableStateOf<Long?>(null) }
     val selectedTab = MainTab.valueOf(selectedTabName)
 
     Scaffold(
@@ -73,6 +74,11 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     onResumeRecovered = viewModel::resumeRecoveredTrip,
                     onFinishRecovered = viewModel::finishRecoveredTrip,
                     onOpenTrips = { selectedTabName = MainTab.Trips.name },
+                    onConfirmRouteReview = viewModel::confirmRouteReview,
+                    onEditRouteReview = { tripId ->
+                        editTripId = tripId
+                        selectedTabName = MainTab.Trips.name
+                    },
                 )
                 MainTab.Trips -> TripsScreen(
                     trips = uiState.trips,
@@ -85,6 +91,8 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     onUpdateTrip = viewModel::updateTrip,
                     onAddManualTrip = viewModel::addManualTrip,
                     onAddAttachment = viewModel::addAttachment,
+                    initialEditTripId = editTripId,
+                    onInitialEditConsumed = { editTripId = null },
                 )
                 MainTab.Reports -> ReportsScreen(
                     trips = uiState.trips,

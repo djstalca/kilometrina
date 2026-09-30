@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.util.Base64
 
 private const val BACKUP_FORMAT = "kilometrina-backup"
-private const val BACKUP_SCHEMA_VERSION = 4
+private const val BACKUP_SCHEMA_VERSION = 5
 private const val MIN_SUPPORTED_SCHEMA_VERSION = 1
 private const val MAX_TRIPS = 50_000
 private const val MAX_POINTS = 750_000
@@ -121,6 +121,7 @@ object BackupCodec {
             require(trip.description.length <= 500) { "Predolg opis vožnje." }
             val routeStops = TripRouteCodec.decode(trip.routeStopsJson)
             require(routeStops.size <= TripRouteCodec.MAX_STOPS && routeStops.all { it.length <= TripRouteCodec.MAX_ADDRESS_LENGTH }) { "Neveljavni postanki v vožnji." }
+            require(trip.routeDetectionVersion in 0..1) { "Neveljavna verzija zaznave relacije." }
             require(trip.vehicleId.length <= 100 && trip.vehicleName.length <= 80 && trip.registrationPlate.length <= 24) { "Neveljavni podatki vozila v vožnji." }
             require(trip.tripKind == TripKinds.BUSINESS || trip.tripKind == TripKinds.PRIVATE) { "Neveljavna vrsta vožnje." }
             require(trip.gpsQuality.length <= 20 && trip.gpsWarning.length <= 300 && trip.calendarTitle.length <= 120) { "Neveljavni dodatni podatki vožnje." }
@@ -244,6 +245,7 @@ object BackupCodec {
         .put("purpose", value.purpose)
         .put("description", value.description)
         .put("routeStops", JSONArray().apply { value.routeStops().forEach { put(it) } })
+        .put("routeDetectionVersion", value.routeDetectionVersion)
         .put("ratePerKm", value.ratePerKm)
         .put("tollsCents", value.tollsCents)
         .put("parkingCents", value.parkingCents)
@@ -270,6 +272,7 @@ object BackupCodec {
         purpose = obj.getString("purpose"),
         description = obj.optString("description", ""),
         routeStopsJson = routeStopsFromJson(obj),
+        routeDetectionVersion = obj.optInt("routeDetectionVersion", 0).coerceIn(0, 1),
         ratePerKm = obj.getDouble("ratePerKm"),
         tollsCents = obj.optInt("tollsCents", 0),
         parkingCents = obj.optInt("parkingCents", 0),

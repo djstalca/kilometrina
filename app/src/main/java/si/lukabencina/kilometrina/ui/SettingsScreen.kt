@@ -433,8 +433,8 @@ private fun SavedPlaceDialog(place: SavedPlace?, onDismiss: () -> Unit, onSave: 
                             name = name,
                             address = address,
                             defaultPurpose = defaultPurpose,
-                            lat = place?.lat?.takeIf { place.address.trim().equals(address.trim(), ignoreCase = true) },
-                            lon = place?.lon?.takeIf { place.address.trim().equals(address.trim(), ignoreCase = true) },
+                            lat = place?.takeIf { it.address.trim().equals(address.trim(), ignoreCase = true) }?.lat,
+                            lon = place?.takeIf { it.address.trim().equals(address.trim(), ignoreCase = true) }?.lon,
                             matchRadiusMeters = (radius ?: 200).coerceIn(100, 1500),
                         ),
                     )

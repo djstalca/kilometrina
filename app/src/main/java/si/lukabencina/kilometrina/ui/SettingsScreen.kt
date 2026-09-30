@@ -278,6 +278,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(place.name, fontWeight = FontWeight.SemiBold)
                             Text(place.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Samodejna prepoznava: ${place.matchRadiusMeters} m", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (place.defaultPurpose.isNotBlank()) Text(place.defaultPurpose, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = { editingPlace = place }) { Icon(Icons.Outlined.Edit, contentDescription = "Uredi ${place.name}") }
@@ -400,6 +401,8 @@ private fun SavedPlaceDialog(place: SavedPlace?, onDismiss: () -> Unit, onSave: 
     var name by remember(place?.id) { mutableStateOf(place?.name.orEmpty()) }
     var address by remember(place?.id) { mutableStateOf(place?.address.orEmpty()) }
     var defaultPurpose by remember(place?.id) { mutableStateOf(place?.defaultPurpose.orEmpty()) }
+    var radiusText by remember(place?.id) { mutableStateOf((place?.matchRadiusMeters ?: 150).toString()) }
+    val radius = radiusText.toIntOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (place == null) "Nova lokacija" else "Uredi lokacijo") },
@@ -408,6 +411,17 @@ private fun SavedPlaceDialog(place: SavedPlace?, onDismiss: () -> Unit, onSave: 
                 OutlinedTextField(value = name, onValueChange = { name = it.take(60) }, label = { Text("Ime ali stranka") }, placeholder = { Text("npr. Prodent") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(value = address, onValueChange = { address = it.take(160) }, label = { Text("Naslov") }, placeholder = { Text("Ulica, kraj") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(value = defaultPurpose, onValueChange = { defaultPurpose = it.take(80) }, label = { Text("Privzeti namen (neobvezno)") }, placeholder = { Text("npr. Obisk stranke") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    value = radiusText,
+                    onValueChange = { radiusText = it.filter(Char::isDigit).take(4) },
+                    label = { Text("Radij prepoznave") },
+                    suffix = { Text("m") },
+                    supportingText = { Text("Aplikacija uporabi to ime, ko GPS pade znotraj tega območja.") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    isError = radius != null && radius !in 100..1500,
+                )
             }
         },
         confirmButton = {
@@ -419,10 +433,13 @@ private fun SavedPlaceDialog(place: SavedPlace?, onDismiss: () -> Unit, onSave: 
                             name = name,
                             address = address,
                             defaultPurpose = defaultPurpose,
+                            lat = place?.takeIf { it.address.trim().equals(address.trim(), ignoreCase = true) }?.lat,
+                            lon = place?.takeIf { it.address.trim().equals(address.trim(), ignoreCase = true) }?.lon,
+                            matchRadiusMeters = (radius ?: 150).coerceIn(100, 1500),
                         ),
                     )
                 },
-                enabled = name.isNotBlank() && address.isNotBlank(),
+                enabled = name.isNotBlank() && address.isNotBlank() && radius != null && radius in 100..1500,
             ) { Text("Shrani") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Prekliči") } },

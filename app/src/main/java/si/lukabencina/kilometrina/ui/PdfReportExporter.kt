@@ -18,7 +18,8 @@ object PdfReportExporter {
     private const val PAGE_HEIGHT = 595
     private const val MARGIN = 28f
     private const val TABLE_TOP = 116f
-    private const val ROW_HEIGHT = 28f
+    private const val HEADER_ROW_HEIGHT = 26f
+    private const val TRIP_ROW_HEIGHT = 56f
     private const val TABLE_BOTTOM = 532f
 
     private val locale = Locale.forLanguageTag("sl-SI")
@@ -49,10 +50,10 @@ object PdfReportExporter {
             drawPageHeader(canvas, month, settings, vehicleSummary, pageNumber)
             var y = TABLE_TOP
             drawTableHeader(canvas, y)
-            y += ROW_HEIGHT
+            y += HEADER_ROW_HEIGHT
 
             for (trip in completedTrips) {
-                if (y + ROW_HEIGHT > TABLE_BOTTOM) {
+                if (y + TRIP_ROW_HEIGHT > TABLE_BOTTOM) {
                     drawPageFooter(canvas, pageNumber)
                     document.finishPage(page)
                     pageNumber += 1
@@ -61,10 +62,10 @@ object PdfReportExporter {
                     drawPageHeader(canvas, month, settings, vehicleSummary, pageNumber)
                     y = TABLE_TOP
                     drawTableHeader(canvas, y)
-                    y += ROW_HEIGHT
+                    y += HEADER_ROW_HEIGHT
                 }
                 drawTripRow(canvas, y, trip, rowIndex)
-                y += ROW_HEIGHT
+                y += TRIP_ROW_HEIGHT
                 rowIndex += 1
             }
 
@@ -139,27 +140,21 @@ object PdfReportExporter {
     private data class Column(val title: String, val width: Float, val align: Paint.Align = Paint.Align.LEFT)
 
     private val columns = listOf(
-        Column("Datum", 50f),
-        Column("Relacija", 160f),
-        Column("Namen", 85f),
-        Column("Opis", 120f),
-        Column("Vozilo", 80f),
-        Column("km", 40f, Paint.Align.RIGHT),
-        Column("€/km", 42f, Paint.Align.RIGHT),
-        Column("Kilometrina", 60f, Paint.Align.RIGHT),
-        Column("Dodatni", 55f, Paint.Align.RIGHT),
-        Column("Skupaj", 60f, Paint.Align.RIGHT),
+        Column("Datum", 70f),
+        Column("Vožnja / relacija", 556f),
+        Column("km", 65f, Paint.Align.RIGHT),
+        Column("Skupaj", 95f, Paint.Align.RIGHT),
     )
 
     private fun drawTableHeader(canvas: Canvas, y: Float) {
         val background = Paint().apply { color = Color.rgb(239, 242, 246) }
-        canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + ROW_HEIGHT, background)
+        canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + HEADER_ROW_HEIGHT, background)
         val paint = textPaint(7.5f, bold = true, color = Color.rgb(49, 56, 66))
         var x = MARGIN
         for (column in columns) {
             paint.textAlign = column.align
-            val textX = if (column.align == Paint.Align.RIGHT) x + column.width - 5f else x + 5f
-            canvas.drawText(column.title, textX, y + 18f, paint)
+            val textX = if (column.align == Paint.Align.RIGHT) x + column.width - 6f else x + 6f
+            canvas.drawText(column.title, textX, y + 17f, paint)
             x += column.width
         }
     }
@@ -167,38 +162,60 @@ object PdfReportExporter {
     private fun drawTripRow(canvas: Canvas, y: Float, trip: TripEntity, rowIndex: Int) {
         if (rowIndex % 2 == 1) {
             val background = Paint().apply { color = Color.rgb(249, 250, 252) }
-            canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + ROW_HEIGHT, background)
+            canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + TRIP_ROW_HEIGHT, background)
         }
-        val paint = textPaint(7.2f, color = Color.rgb(38, 43, 51))
-        val route = formatTripRoute(trip)
-        val vehicle = listOf(trip.vehicleName, trip.registrationPlate).filter(String::isNotBlank).joinToString(" • ")
-        val values = listOf(
-            formatDate(trip.startTime),
-            route,
-            trip.purpose,
-            trip.description,
-            vehicle,
-            number(trip.distanceMeters / 1000.0, 1),
-            number(trip.ratePerKm, 2),
-            money(tripCompensation(trip)),
-            money(tripAdditionalCosts(trip)),
-            money(tripTotalCost(trip)),
+
+        val datePaint = textPaint(7.4f, color = Color.rgb(55, 61, 70))
+        val titlePaint = textPaint(8.4f, bold = true, color = Color.rgb(32, 37, 45))
+        val routePaint = textPaint(7.4f, color = Color.rgb(45, 51, 60))
+        val metaPaint = textPaint(6.6f, color = Color.rgb(92, 99, 109))
+        val numberPaint = textPaint(8.2f, bold = true, color = Color.rgb(32, 37, 45)).apply {
+            textAlign = Paint.Align.RIGHT
+        }
+
+        val dateX = MARGIN + 6f
+        val detailsX = MARGIN + columns[0].width + 6f
+        val detailsWidth = columns[1].width - 12f
+        val kmRight = MARGIN + columns[0].width + columns[1].width + columns[2].width - 6f
+        val totalRight = PAGE_WIDTH - MARGIN - 6f
+
+        canvas.drawText(formatDate(trip.startTime), dateX, y + 20f, datePaint)
+        canvas.drawText(
+            "${formatTime(trip.startTime)}–${trip.endTime?.let(::formatTime).orEmpty()}",
+            dateX,
+            y + 35f,
+            datePaint,
         )
 
-        var x = MARGIN
-        for (index in columns.indices) {
-            val column = columns[index]
-            paint.textAlign = column.align
-            val textX = if (column.align == Paint.Align.RIGHT) x + column.width - 5f else x + 5f
-            canvas.drawText(fitText(values[index], column.width - 10f, paint), textX, y + 18f, paint)
-            x += column.width
+        val title = trip.description.trim().ifBlank { trip.purpose }
+        val route = formatTripRoute(trip)
+        val meta = buildString {
+            if (trip.description.isNotBlank()) {
+                append("Namen: ")
+                append(trip.purpose)
+                append(" • ")
+            }
+            append(number(trip.ratePerKm, 2))
+            append(" €/km • kilometrina ")
+            append(money(tripCompensation(trip)))
+            if (tripAdditionalCosts(trip) > 0.0) {
+                append(" • dodatni ")
+                append(money(tripAdditionalCosts(trip)))
+            }
         }
+
+        canvas.drawText(fitText(title, detailsWidth, titlePaint), detailsX, y + 15f, titlePaint)
+        canvas.drawText(fitText(route, detailsWidth, routePaint), detailsX, y + 31f, routePaint)
+        canvas.drawText(fitText(meta, detailsWidth, metaPaint), detailsX, y + 46f, metaPaint)
+
+        canvas.drawText(number(trip.distanceMeters / 1000.0, 1), kmRight, y + 31f, numberPaint)
+        canvas.drawText(money(tripTotalCost(trip)), totalRight, y + 31f, numberPaint)
 
         val line = Paint().apply {
             color = Color.rgb(229, 232, 237)
             strokeWidth = 0.7f
         }
-        canvas.drawLine(MARGIN, y + ROW_HEIGHT, PAGE_WIDTH - MARGIN, y + ROW_HEIGHT, line)
+        canvas.drawLine(MARGIN, y + TRIP_ROW_HEIGHT, PAGE_WIDTH - MARGIN, y + TRIP_ROW_HEIGHT, line)
     }
 
     private fun drawSummary(canvas: Canvas, y: Float, summary: ReportSummary) {

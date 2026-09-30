@@ -139,7 +139,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             if (vehicles.vehicles.isEmpty()) {
                 app.vehicleRepository.seedLegacyIfEmpty(settings.vehicleName, settings.registrationPlate)
             }
-            runCatching { app.savedPlaceRepository.resolveMissingCoordinates() }
+            runCatching {
+                app.savedPlaceRepository.seedDefaultPlacesIfNeeded()
+                app.savedPlaceRepository.resolveMissingCoordinates()
+                repository.refreshAutomaticRoutes()
+            }
             if (settings.autoDetectionEnabled && DrivingDetectionManager.hasPermission(application)) {
                 runCatching { DrivingDetectionManager.enable(application) }
             }

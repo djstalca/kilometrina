@@ -103,6 +103,7 @@ class TripRepository(
                 purpose = trip.purpose.trim().ifBlank { "Službena pot" }.take(200),
                 description = trip.description.trim().take(500),
                 routeStopsJson = TripRouteCodec.normalize(trip.routeStopsJson),
+                routeDetectionVersion = 1,
                 distanceMeters = trip.distanceMeters.coerceAtLeast(0.0),
                 ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
                 tollsCents = trip.tollsCents.coerceAtLeast(0),
@@ -177,9 +178,11 @@ class TripRepository(
         val matchedPlace = finalLocation?.let {
             savedPlaceRepository.nearestPlace(it.latitude, it.longitude)?.place
         }
-        val address = finalLocation?.let {
+        val endAddress = finalLocation?.let {
             matchedPlace?.name ?: reverseGeocode(it.latitude, it.longitude)
-        }
+        } ?: "Lokacija ni na voljo"
+        val startAddress = savedPlaceRepository.displayNameFor(active.startLat, active.startLon)
+            ?: active.startAddress
         val endTime = System.currentTimeMillis()
         val genericPurpose = active.purpose.trim().equals("Službena pot", ignoreCase = true)
         val savedPlacePurpose = matchedPlace?.defaultPurpose?.takeIf { it.isNotBlank() && genericPurpose }
@@ -190,21 +193,62 @@ class TripRepository(
             null
         }
         val smartPurpose = savedPlacePurpose ?: calendarSuggestion?.title ?: active.purpose
-        val gpsAssessment = assessGps(dao.getPointsForTrip(active.id))
+        val points = dao.getPointsForTrip(active.id)
+        val automaticStops = automaticStopLabels(points, startAddress, endAddress)
+        val gpsAssessment = assessGps(points)
 
         dao.updateTrip(
             active.copy(
                 endTime = endTime,
+                startAddress = startAddress,
                 endLat = finalLocation?.latitude,
                 endLon = finalLocation?.longitude,
-                endAddress = address ?: "Lokacija ni na voljo",
+                endAddress = endAddress,
                 purpose = smartPurpose,
+                routeStopsJson = TripRouteCodec.encode(automaticStops),
+                routeDetectionVersion = 1,
                 gpsQuality = gpsAssessment.quality,
                 gpsWarning = gpsAssessment.warning,
                 calendarEventId = calendarSuggestion?.eventId,
                 calendarTitle = calendarSuggestion?.title.orEmpty(),
             ),
         )
+    }
+
+    suspend fun refreshAutomaticRoutes() {
+        dao.getAllTrips()
+            .asSequence()
+            .filter { it.endTime != null && it.routeDetectionVersion < 1 }
+            .forEach { trip ->
+                val points = dao.getPointsForTrip(trip.id)
+                val startAddress = if (validCoordinates(trip.startLat, trip.startLon)) {
+                    savedPlaceRepository.displayNameFor(trip.startLat, trip.startLon) ?: trip.startAddress
+                } else {
+                    trip.startAddress
+                }
+                val endAddress = if (
+                    trip.endLat != null && trip.endLon != null &&
+                    validCoordinates(trip.endLat, trip.endLon)
+                ) {
+                    savedPlaceRepository.displayNameFor(trip.endLat, trip.endLon) ?: trip.endAddress
+                } else {
+                    trip.endAddress
+                }
+                val stops = if (trip.routeStops().isNotEmpty()) {
+                    trip.routeStops()
+                } else {
+                    automaticStopLabels(points, startAddress, endAddress.orEmpty())
+                }
+
+                dao.updateTrip(
+                    trip.copy(
+                        startAddress = startAddress,
+                        endAddress = endAddress,
+                        routeStopsJson = TripRouteCodec.encode(stops),
+                        routeDetectionVersion = 1,
+                    ),
+                )
+            }
     }
 
     suspend fun updateCompletedTrip(trip: TripEntity) {
@@ -217,6 +261,7 @@ class TripRepository(
                 purpose = trip.purpose.trim().ifBlank { "Službena pot" }.take(200),
                 description = trip.description.trim().take(500),
                 routeStopsJson = TripRouteCodec.normalize(trip.routeStopsJson),
+                routeDetectionVersion = 1,
                 distanceMeters = trip.distanceMeters.coerceAtLeast(0.0),
                 ratePerKm = trip.ratePerKm.coerceAtLeast(0.0),
                 tollsCents = trip.tollsCents.coerceAtLeast(0),
@@ -236,16 +281,64 @@ class TripRepository(
         if (points.size < 2) return GpsAssessment(GpsQuality.POOR, "GPS trasa nima dovolj točk.")
         val sorted = points.sortedBy { it.timestamp }
         val averageAccuracy = sorted.map { it.accuracyMeters.toDouble() }.average()
-        val maxGapSeconds = sorted.zipWithNext { a, b -> ((b.timestamp - a.timestamp).coerceAtLeast(0L) / 1000L) }
-            .maxOrNull() ?: 0L
+        val maxMovingGapSeconds = sorted.zipWithNext()
+            .filter { (a, b) ->
+                SavedPlaceRepository.distanceMeters(a.lat, a.lon, b.lat, b.lon) > 250.0
+            }
+            .maxOfOrNull { (a, b) -> ((b.timestamp - a.timestamp).coerceAtLeast(0L) / 1000L) }
+            ?: 0L
         return when {
-            maxGapSeconds > 120L || averageAccuracy > 35.0 ->
+            maxMovingGapSeconds > 120L || averageAccuracy > 35.0 ->
                 GpsAssessment(GpsQuality.POOR, "Preveri traso: zaznan je daljši GPS izpad ali slabša natančnost.")
-            maxGapSeconds > 45L || averageAccuracy > 20.0 ->
+            maxMovingGapSeconds > 45L || averageAccuracy > 20.0 ->
                 GpsAssessment(GpsQuality.FAIR, "GPS zapis je uporaben, vendar ni povsem enakomeren.")
             else -> GpsAssessment(GpsQuality.GOOD, "")
         }
     }
+
+    private suspend fun automaticStopLabels(
+        points: List<LocationPointEntity>,
+        startAddress: String,
+        endAddress: String,
+    ): List<String> {
+        val candidates = AutomaticRouteDetector.detect(points)
+        if (candidates.isEmpty()) return emptyList()
+
+        val normalizedEndpoints = setOf(startAddress.trim().lowercase(), endAddress.trim().lowercase())
+        val labels = mutableListOf<String>()
+        for (candidate in candidates) {
+            val label = savedPlaceRepository.displayNameFor(candidate.lat, candidate.lon)
+                ?: reverseGeocodeStop(candidate.lat, candidate.lon)
+                ?: continue
+            val clean = label.trim().take(TripRouteCodec.MAX_ADDRESS_LENGTH)
+            if (clean.isBlank() || clean.lowercase() in normalizedEndpoints) continue
+            if (labels.lastOrNull()?.equals(clean, ignoreCase = true) == true) continue
+            labels += clean
+        }
+        return labels.take(TripRouteCodec.MAX_STOPS)
+    }
+
+    private suspend fun reverseGeocodeStop(lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            @Suppress("DEPRECATION")
+            Geocoder(context, Locale.getDefault())
+                .getFromLocation(lat, lon, 1)
+                ?.firstOrNull()
+                ?.let { address ->
+                    listOfNotNull(
+                        address.locality,
+                        address.subLocality,
+                        address.subAdminArea,
+                        address.thoroughfare,
+                    )
+                        .map(String::trim)
+                        .firstOrNull { it.isNotBlank() }
+                }
+        }.getOrNull()
+    }
+
+    private fun validCoordinates(lat: Double, lon: Double): Boolean =
+        lat.isFinite() && lat in -90.0..90.0 && lon.isFinite() && lon in -180.0..180.0
 
     private fun normalizeTripKind(value: String): String =
         if (value == TripKinds.PRIVATE) TripKinds.PRIVATE else TripKinds.BUSINESS

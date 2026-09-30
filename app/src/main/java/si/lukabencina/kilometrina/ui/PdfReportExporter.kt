@@ -195,12 +195,15 @@ object PdfReportExporter {
                 append(trip.purpose)
                 append(" • ")
             }
-            append(number(trip.ratePerKm, 2))
-            append(" €/km • kilometrina ")
+            append("Kilometrina ")
             append(money(tripCompensation(trip)))
-            if (tripAdditionalCosts(trip) > 0.0) {
-                append(" • dodatni ")
-                append(money(tripAdditionalCosts(trip)))
+            if (trip.parkingCents > 0) {
+                append(" • Parkirnina ")
+                append(money(trip.parkingCents / 100.0))
+            }
+            if (trip.tollsCents > 0) {
+                append(" • Cestnina ")
+                append(money(trip.tollsCents / 100.0))
             }
         }
 

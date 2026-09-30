@@ -2,6 +2,7 @@ package si.lukabencina.kilometrina.data
 
 import android.content.Context
 import android.location.Geocoder
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -41,6 +42,7 @@ data class SavedPlaceMatch(
 
 class SavedPlaceRepository(private val context: Context) {
     private val placesKey = stringSetPreferencesKey("places")
+    private val defaultsSeededKey = booleanPreferencesKey("defaults_seeded_v1")
 
     val places: Flow<List<SavedPlace>> = context.savedPlacesDataStore.data.map { prefs ->
         prefs[placesKey]
@@ -88,6 +90,32 @@ class SavedPlaceRepository(private val context: Context) {
             if (place.hasCoordinates) place else resolveCoordinates(place)
         }
         replaceAll(resolved)
+    }
+
+    suspend fun seedDefaultPlacesIfNeeded() {
+        val snapshot = context.savedPlacesDataStore.data.first()
+        if (snapshot[defaultsSeededKey] == true) return
+
+        val current = snapshot[placesKey].orEmpty().mapNotNull(SavedPlaceCodec::decode).toMutableList()
+        val alreadyHasProdent = current.any { place ->
+            place.name.equals("Prodent", ignoreCase = true) ||
+                place.address.contains("Zvezna ulica 2A", ignoreCase = true)
+        }
+        if (!alreadyHasProdent) {
+            current += resolveCoordinates(
+                SavedPlace(
+                    id = "builtin-prodent",
+                    name = "Prodent",
+                    address = "Zvezna ulica 2A, 1000 Ljubljana",
+                    matchRadiusMeters = 200,
+                ),
+            )
+        }
+
+        context.savedPlacesDataStore.edit { prefs ->
+            prefs[placesKey] = current.map(SavedPlaceCodec::encode).toSet()
+            prefs[defaultsSeededKey] = true
+        }
     }
 
     suspend fun nearestPlace(lat: Double, lon: Double): SavedPlaceMatch? {

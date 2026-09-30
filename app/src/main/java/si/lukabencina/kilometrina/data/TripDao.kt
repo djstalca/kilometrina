@@ -63,6 +63,9 @@ interface TripDao {
     @Query("UPDATE trips SET distanceMeters = distanceMeters + :segmentMeters WHERE id = :tripId")
     suspend fun addDistance(tripId: Long, segmentMeters: Double)
 
+    @Query("UPDATE trips SET routeReviewPending = 0 WHERE id = :tripId")
+    suspend fun confirmRouteReview(tripId: Long)
+
     @Query("DELETE FROM attachments WHERE id = :attachmentId")
     suspend fun deleteAttachment(attachmentId: Long)
 

@@ -19,7 +19,7 @@ object PdfReportExporter {
     private const val MARGIN = 28f
     private const val TABLE_TOP = 116f
     private const val HEADER_ROW_HEIGHT = 26f
-    private const val TRIP_ROW_HEIGHT = 68f
+    private const val TRIP_ROW_HEIGHT = 84f
     private const val TABLE_BOTTOM = 532f
 
     private val locale = Locale.forLanguageTag("sl-SI")
@@ -165,12 +165,13 @@ object PdfReportExporter {
             canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + TRIP_ROW_HEIGHT, background)
         }
 
-        val datePaint = textPaint(7.4f, color = Color.rgb(55, 61, 70))
-        val titlePaint = textPaint(8.4f, bold = true, color = Color.rgb(32, 37, 45))
-        val routePaint = textPaint(7.4f, color = Color.rgb(45, 51, 60))
-        val metaPaint = textPaint(6.8f, color = Color.rgb(92, 99, 109))
-        val costPaint = textPaint(7.0f, color = Color.rgb(68, 75, 85))
-        val numberPaint = textPaint(8.2f, bold = true, color = Color.rgb(32, 37, 45)).apply {
+        val datePaint = textPaint(7.8f, color = Color.rgb(55, 61, 70))
+        val titlePaint = textPaint(8.8f, bold = true, color = Color.rgb(32, 37, 45))
+        val routePaint = textPaint(8.0f, color = Color.rgb(45, 51, 60))
+        val vehiclePaint = textPaint(7.6f, color = Color.rgb(76, 83, 93))
+        val metaPaint = textPaint(7.4f, color = Color.rgb(92, 99, 109))
+        val costPaint = textPaint(7.8f, color = Color.rgb(68, 75, 85))
+        val numberPaint = textPaint(8.6f, bold = true, color = Color.rgb(32, 37, 45)).apply {
             textAlign = Paint.Align.RIGHT
         }
 
@@ -180,17 +181,22 @@ object PdfReportExporter {
         val kmRight = MARGIN + columns[0].width + columns[1].width + columns[2].width - 6f
         val totalRight = PAGE_WIDTH - MARGIN - 6f
 
-        canvas.drawText(formatDate(trip.startTime), dateX, y + 20f, datePaint)
+        canvas.drawText(formatDate(trip.startTime), dateX, y + 23f, datePaint)
         canvas.drawText(
             "${formatTime(trip.startTime)}–${trip.endTime?.let(::formatTime).orEmpty()}",
             dateX,
-            y + 35f,
+            y + 39f,
             datePaint,
         )
 
         val title = trip.description.trim().ifBlank { trip.purpose }
         val route = formatTripRoute(trip)
-        val purposeMeta = if (trip.description.isNotBlank()) "Namen: ${trip.purpose}" else ""
+        val vehicle = listOf(trip.vehicleName, trip.registrationPlate)
+            .filter(String::isNotBlank)
+            .joinToString(" • ")
+            .ifBlank { "—" }
+        val vehicleMeta = "Vozilo: $vehicle"
+        val purposeMeta = if (trip.description.isNotBlank() && trip.purpose.isNotBlank()) "Namen: ${trip.purpose}" else ""
         val costs = buildString {
             append("Kilometrina ")
             append(money(tripCompensation(trip)))
@@ -204,15 +210,16 @@ object PdfReportExporter {
             }
         }
 
-        canvas.drawText(fitText(title, detailsWidth, titlePaint), detailsX, y + 15f, titlePaint)
-        canvas.drawText(fitText(route, detailsWidth, routePaint), detailsX, y + 31f, routePaint)
+        canvas.drawText(fitText(title, detailsWidth, titlePaint), detailsX, y + 16f, titlePaint)
+        canvas.drawText(fitText(route, detailsWidth, routePaint), detailsX, y + 33f, routePaint)
+        canvas.drawText(fitText(vehicleMeta, detailsWidth, vehiclePaint), detailsX, y + 49f, vehiclePaint)
         if (purposeMeta.isNotBlank()) {
-            canvas.drawText(fitText(purposeMeta, detailsWidth, metaPaint), detailsX, y + 46f, metaPaint)
+            canvas.drawText(fitText(purposeMeta, detailsWidth, metaPaint), detailsX, y + 64f, metaPaint)
         }
-        canvas.drawText(fitText(costs, detailsWidth, costPaint), detailsX, y + 60f, costPaint)
+        canvas.drawText(fitText(costs, detailsWidth, costPaint), detailsX, y + 79f, costPaint)
 
-        canvas.drawText(number(trip.distanceMeters / 1000.0, 1), kmRight, y + 35f, numberPaint)
-        canvas.drawText(money(tripTotalCost(trip)), totalRight, y + 35f, numberPaint)
+        canvas.drawText(number(trip.distanceMeters / 1000.0, 1), kmRight, y + 41f, numberPaint)
+        canvas.drawText(money(tripTotalCost(trip)), totalRight, y + 41f, numberPaint)
 
         val line = Paint().apply {
             color = Color.rgb(229, 232, 237)
@@ -254,11 +261,17 @@ object PdfReportExporter {
         canvas.drawText("$pageNumber", PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 20f, paint)
     }
 
-    private fun textPaint(size: Float, bold: Boolean = false, color: Int): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = size
-        this.color = color
-        typeface = if (bold) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
-    }
+    private val regularTypeface: Typeface by lazy { Typeface.create("sans-serif", Typeface.NORMAL) }
+    private val mediumTypeface: Typeface by lazy { Typeface.create("sans-serif-medium", Typeface.NORMAL) }
+
+    private fun textPaint(size: Float, bold: Boolean = false, color: Int): Paint =
+        Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+            textSize = size
+            this.color = color
+            typeface = if (bold) mediumTypeface else regularTypeface
+            isFakeBoldText = false
+            textScaleX = 1f
+        }
 
     private fun fitText(value: String, maxWidth: Float, paint: Paint): String {
         val clean = value.replace('\n', ' ').replace('\r', ' ').trim()

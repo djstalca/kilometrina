@@ -2,7 +2,7 @@
 
 Native Android aplikacija za beleženje službenih voženj, dejansko GPS kilometrino, stroške in poročila.
 
-## Kilometrina 1.1.4
+## Kilometrina 1.1.5
 
 - uporabniško sproženo GPS beleženje dejansko prevožene poti,
 - foreground location service z vidnim obvestilom tudi pri ugasnjenem zaslonu,

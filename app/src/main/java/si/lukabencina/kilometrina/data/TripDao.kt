@@ -5,7 +5,10 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 
 @Dao
 interface TripDao {
@@ -45,14 +48,40 @@ interface TripDao {
     @Query("SELECT * FROM location_points ORDER BY id")
     suspend fun getAllPoints(): List<LocationPointEntity>
 
-    @Query("SELECT * FROM attachments ORDER BY createdAt, id")
-    suspend fun getAllAttachments(): List<AttachmentEntity>
+    @Query("SELECT id, tripId, displayName, mimeType, createdAt, length(data) AS sizeBytes FROM attachments ORDER BY createdAt, id")
+    suspend fun getAttachmentSummaries(): List<AttachmentSummary>
 
-    @Query("SELECT * FROM attachments ORDER BY createdAt DESC, id DESC")
-    fun observeAttachments(): Flow<List<AttachmentEntity>>
+    @Query("SELECT id, tripId, displayName, mimeType, createdAt, length(data) AS sizeBytes FROM attachments ORDER BY createdAt DESC, id DESC")
+    fun observeAttachments(): Flow<List<AttachmentSummary>>
 
-    @Query("SELECT * FROM attachments WHERE tripId = :tripId ORDER BY createdAt, id")
-    suspend fun getAttachmentsForTrip(tripId: Long): List<AttachmentEntity>
+    @Query("SELECT id, tripId, displayName, mimeType, createdAt, length(data) AS sizeBytes FROM attachments WHERE tripId = :tripId ORDER BY createdAt, id")
+    suspend fun getAttachmentsForTrip(tripId: Long): List<AttachmentSummary>
+
+    // A single camera photo can exceed SQLite's CursorWindow. Keep the existing
+    // BLOB intact and read bounded slices; this also recovers already affected DBs.
+    @Query("SELECT substr(data, :offset, :length) FROM attachments WHERE id = :attachmentId")
+    suspend fun getAttachmentChunk(attachmentId: Long, offset: Long, length: Int): ByteArray?
+
+    @Transaction
+    suspend fun copyAttachment(attachment: AttachmentSummary, output: OutputStream) {
+        var offset = 0L
+        while (offset < attachment.sizeBytes) {
+            val chunk = getAttachmentChunk(attachment.id, offset + 1, minOf(256 * 1024L, attachment.sizeBytes - offset).toInt())
+                ?: error("Priloge ni bilo mogoče prebrati.")
+            check(chunk.isNotEmpty()) { "Priloga ni popolna." }
+            output.write(chunk)
+            offset += chunk.size
+        }
+    }
+
+    @Transaction
+    suspend fun getAllAttachments(): List<AttachmentEntity> = getAttachmentSummaries().map { summary ->
+        val bytes = ByteArrayOutputStream().use { output ->
+            copyAttachment(summary, output)
+            output.toByteArray()
+        }
+        AttachmentEntity(summary.id, summary.tripId, summary.displayName, summary.mimeType, bytes, summary.createdAt)
+    }
 
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY timestamp ASC")
     suspend fun getPointsForTrip(tripId: Long): List<LocationPointEntity>
@@ -62,6 +91,12 @@ interface TripDao {
 
     @Query("UPDATE trips SET distanceMeters = distanceMeters + :segmentMeters WHERE id = :tripId")
     suspend fun addDistance(tripId: Long, segmentMeters: Double)
+
+    @Transaction
+    suspend fun appendPointAndDistance(point: LocationPointEntity) {
+        insertPoint(point)
+        addDistance(point.tripId, point.segmentMeters)
+    }
 
     @Query("UPDATE trips SET routeReviewPending = 0 WHERE id = :tripId")
     suspend fun confirmRouteReview(tripId: Long)

@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Icon
@@ -50,7 +50,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                 MainTab.entries.forEach { tab ->
                     val icon = when (tab) {
                         MainTab.Home -> Icons.Outlined.Home
-                        MainTab.Trips -> Icons.Outlined.ReceiptLong
+                        MainTab.Trips -> Icons.AutoMirrored.Outlined.ReceiptLong
                         MainTab.Reports -> Icons.Outlined.Assessment
                         MainTab.Data -> Icons.Outlined.Storage
                         MainTab.Settings -> Icons.Outlined.Settings
@@ -98,6 +98,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     trips = uiState.trips,
                     settings = uiState.settings,
                     attachments = uiState.attachments,
+                    copyAttachment = viewModel::copyAttachment,
                 )
                 MainTab.Data -> BackupScreen(
                     tripCount = uiState.trips.count { it.endTime != null },

@@ -49,7 +49,7 @@ object BackupCodec {
         val tripsArray = root.getJSONArray("trips")
         val pointsArray = root.getJSONArray("points")
         val placesArray = root.getJSONArray("savedPlaces")
-        val attachmentsArray = if (schema >= 3) root.optJSONArray("attachments") ?: JSONArray() else JSONArray()
+        val attachmentsArray = if (schema >= 3) root.optionalArray("attachments") else JSONArray()
         require(tripsArray.length() <= MAX_TRIPS) { "Varnostna kopija vsebuje preveč voženj." }
         require(pointsArray.length() <= MAX_POINTS) { "Varnostna kopija vsebuje preveč GPS točk." }
         require(placesArray.length() <= MAX_PLACES) { "Varnostna kopija vsebuje preveč priljubljenih lokacij." }
@@ -66,7 +66,7 @@ object BackupCodec {
         val fallbackVehicle = vehicles.defaultVehicle
         val trips = List(tripsArray.length()) { tripFromJson(tripsArray.getJSONObject(it)) }
             .map { trip ->
-                if (trip.vehicleName.isBlank() && fallbackVehicle != null) {
+                if (schema < 2 && trip.vehicleName.isBlank() && fallbackVehicle != null) {
                     trip.copy(
                         vehicleId = fallbackVehicle.id,
                         vehicleName = fallbackVehicle.name,
@@ -115,9 +115,12 @@ object BackupCodec {
             require(trip.endLat == null || validLat(trip.endLat)) { "Neveljavna končna GPS lokacija." }
             require(trip.endLon == null || validLon(trip.endLon)) { "Neveljavna končna GPS lokacija." }
             require(trip.distanceMeters.isFinite() && trip.distanceMeters >= 0.0) { "Neveljavna razdalja v backupu." }
-            require(trip.ratePerKm.isFinite() && trip.ratePerKm in 0.0..10.0) { "Neveljavna postavka vožnje." }
+            // Preserve finite nonnegative rates saved by older manual-trip editors.
+            require(trip.ratePerKm.isFinite() && trip.ratePerKm >= 0.0 && (trip.distanceMeters / 1000.0 * trip.ratePerKm).isFinite()) { "Neveljavna postavka vožnje." }
             require(trip.parkingCents >= 0 && trip.tollsCents >= 0) { "Neveljavni dodatni stroški." }
-            require(trip.startAddress.length <= 500 && (trip.endAddress?.length ?: 0) <= 500 && trip.purpose.length <= 200) { "Predolgo besedilo v vožnji." }
+            // Addresses were not limited when saved. Do not reject our own backups
+            // or truncate historical addresses; the full JSON size is bounded above.
+            require(trip.purpose.length <= 200) { "Predolgo besedilo v vožnji." }
             require(trip.description.length <= 500) { "Predolg opis vožnje." }
             val routeStops = TripRouteCodec.decode(trip.routeStopsJson)
             require(routeStops.size <= TripRouteCodec.MAX_STOPS && routeStops.all { it.length <= TripRouteCodec.MAX_ADDRESS_LENGTH }) { "Neveljavni postanki v vožnji." }
@@ -139,6 +142,8 @@ object BackupCodec {
 
         val placeIds = places.map { it.id }
         require(placeIds.all { it.isNotBlank() } && placeIds.toSet().size == placeIds.size) { "Neveljavni ID-ji lokacij." }
+        val attachmentIds = attachments.map { it.id }
+        require(attachmentIds.all { it > 0L } && attachmentIds.toSet().size == attachmentIds.size) { "Neveljavni ID-ji prilog." }
         attachments.forEach { attachment ->
             require(attachment.tripId in validTripIds) { "Priloga nima pripadajoče vožnje." }
             require(attachment.displayName.isNotBlank() && attachment.displayName.length <= 180) { "Neveljavno ime priloge." }
@@ -192,7 +197,7 @@ object BackupCodec {
         .put("items", JSONArray().apply { value.vehicles.forEach { put(vehicleToJson(it)) } })
 
     private fun vehicleStateFromJson(obj: JSONObject): VehicleState {
-        val array = obj.optJSONArray("items") ?: JSONArray()
+        val array = obj.optionalArray("items")
         val vehicles = List(array.length()) { vehicleFromJson(array.getJSONObject(it)) }
         val requested = obj.optString("defaultVehicleId", "")
         return VehicleState(
@@ -289,7 +294,8 @@ object BackupCodec {
     )
 
     private fun routeStopsFromJson(obj: JSONObject): String {
-        val array = obj.optJSONArray("routeStops") ?: return "[]"
+        if (!obj.has("routeStops")) return "[]"
+        val array = obj.optJSONArray("routeStops") ?: throw IllegalArgumentException("Neveljavni postanki v vožnji.")
         require(array.length() <= TripRouteCodec.MAX_STOPS) { "Backup vsebuje preveč postankov v eni vožnji." }
         val stops = List(array.length()) { index ->
             array.getString(index).trim().also {
@@ -298,6 +304,9 @@ object BackupCodec {
         }
         return TripRouteCodec.encode(stops)
     }
+
+    private fun JSONObject.optionalArray(key: String): JSONArray =
+        if (!has(key)) JSONArray() else optJSONArray(key) ?: throw IllegalArgumentException("Neveljavno polje v backupu: $key")
 
     private fun attachmentToJson(value: AttachmentEntity) = JSONObject()
         .put("id", value.id)

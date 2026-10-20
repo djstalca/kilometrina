@@ -23,6 +23,8 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,7 +52,14 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import si.lukabencina.kilometrina.data.AppSettings
-import si.lukabencina.kilometrina.data.AttachmentEntity
+import si.lukabencina.kilometrina.data.AttachmentSummary
+import android.net.Uri
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.OutputStream
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
 
@@ -60,9 +70,38 @@ private val reportMonthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", repo
 fun ReportsScreen(
     trips: List<TripEntity>,
     settings: AppSettings,
-    attachments: List<AttachmentEntity>,
+    attachments: List<AttachmentSummary>,
+    copyAttachment: suspend (AttachmentSummary, OutputStream) -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var exporting by remember { mutableStateOf(false) }
+    var exportError by remember { mutableStateOf<String?>(null) }
+
+    fun export(uri: Uri, write: suspend (OutputStream) -> Unit) {
+        scope.launch {
+            exporting = true
+            try {
+                withContext(Dispatchers.IO) {
+                    val temporary = File.createTempFile("report-", ".tmp", context.cacheDir)
+                    try {
+                        temporary.outputStream().use { write(it) }
+                        context.contentResolver.openOutputStream(uri, "w")?.use { output ->
+                            temporary.inputStream().use { it.copyTo(output) }
+                        } ?: error("Datoteke ni bilo mogoče odpreti za zapis.")
+                    } finally {
+                        temporary.delete()
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                exportError = error.message ?: "Izvoz ni uspel."
+            } finally {
+                exporting = false
+            }
+        }
+    }
     var selectedMonthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     var selectedStatsYear by rememberSaveable { mutableIntStateOf(YearMonth.now().year) }
     val selectedMonth = remember(selectedMonthValue) { YearMonth.parse(selectedMonthValue) }
@@ -89,9 +128,9 @@ fun ReportsScreen(
         ActivityResultContracts.CreateDocument("text/csv"),
     ) { uri ->
         if (uri != null) {
-            context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
-                writer.write("\uFEFF")
-                writer.write(CsvExporter.build(monthTrips, selectedMonth, settings))
+            export(uri) { output ->
+                output.write("\uFEFF".toByteArray(Charsets.UTF_8))
+                output.write(CsvExporter.build(monthTrips, selectedMonth, settings).toByteArray(Charsets.UTF_8))
             }
         }
     }
@@ -100,7 +139,7 @@ fun ReportsScreen(
         ActivityResultContracts.CreateDocument("application/pdf"),
     ) { uri ->
         if (uri != null) {
-            context.contentResolver.openOutputStream(uri)?.use { output ->
+            export(uri) { output ->
                 PdfReportExporter.write(output, monthTrips, selectedMonth, settings)
             }
         }
@@ -110,10 +149,19 @@ fun ReportsScreen(
         ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
         if (uri != null) {
-            context.contentResolver.openOutputStream(uri)?.use { output ->
-                MonthPackageExporter.write(output, trips, selectedMonth, settings, attachments)
+            export(uri) { output ->
+                MonthPackageExporter.writeFromRepository(output, trips, selectedMonth, settings, attachments, copyAttachment)
             }
         }
+    }
+
+    exportError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { exportError = null },
+            title = { Text("Izvoz ni uspel") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { exportError = null }) { Text("Zapri") } },
+        )
     }
 
     LazyColumn(
@@ -246,7 +294,7 @@ fun ReportsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { packageLauncher.launch("kilometrina-${selectedMonth}-oddaja.zip") },
-                    enabled = monthTrips.isNotEmpty(),
+                    enabled = monthTrips.isNotEmpty() && !exporting,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Outlined.Archive, contentDescription = null)
@@ -255,7 +303,7 @@ fun ReportsScreen(
                 }
                 OutlinedButton(
                     onClick = { pdfLauncher.launch("kilometrina-${selectedMonth}.pdf") },
-                    enabled = monthTrips.isNotEmpty(),
+                    enabled = monthTrips.isNotEmpty() && !exporting,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Outlined.Description, contentDescription = null)
@@ -264,7 +312,7 @@ fun ReportsScreen(
                 }
                 OutlinedButton(
                     onClick = { csvLauncher.launch("kilometrina-${selectedMonth}.csv") },
-                    enabled = monthTrips.isNotEmpty(),
+                    enabled = monthTrips.isNotEmpty() && !exporting,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Outlined.TableChart, contentDescription = null)

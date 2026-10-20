@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.IBinder
+import android.os.Build
 import android.os.SystemClock
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -114,7 +115,7 @@ class LocationTrackingService : Service() {
                 this@LocationTrackingService,
                 NOTIFICATION_ID,
                 buildNotification(),
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0,
             )
             requestLocationUpdates()
             KilometrinaWidgetProvider.requestUpdate(this@LocationTrackingService)

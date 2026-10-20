@@ -9,6 +9,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import si.lukabencina.kilometrina.data.AppSettings
 import si.lukabencina.kilometrina.data.AttachmentEntity
+import si.lukabencina.kilometrina.data.AttachmentSummary
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
 
@@ -49,8 +50,42 @@ object MonthPackageExporter {
                     val trip = monthTrips.firstOrNull { it.id == attachment.tripId }
                     val date = trip?.let { formatDate(it.startTime).replace(" ", "").replace(".", "-") } ?: "voznja"
                     val safeName = sanitizeFileName(attachment.displayName).ifBlank { "priloga-${index + 1}" }
-                    zip.putNextEntry(ZipEntry("priloge/$date-${attachment.tripId}-$safeName"))
+                    zip.putNextEntry(ZipEntry("priloge/$date-${attachment.tripId}-${index + 1}-$safeName"))
                     zip.write(attachment.data)
+                    zip.closeEntry()
+                }
+        }
+    }
+
+    suspend fun writeFromRepository(
+        output: OutputStream,
+        trips: List<TripEntity>,
+        month: YearMonth,
+        settings: AppSettings,
+        attachments: List<AttachmentSummary>,
+        copyAttachment: suspend (AttachmentSummary, OutputStream) -> Unit,
+    ) {
+        val monthTrips = trips.filter {
+            it.endTime != null && it.tripKind != TripKinds.PRIVATE &&
+                YearMonth.from(Instant.ofEpochMilli(it.startTime).atZone(ZoneId.systemDefault())) == month
+        }.sortedBy { it.startTime }
+        val validIds = monthTrips.map { it.id }.toSet()
+        ZipOutputStream(output).use { zip ->
+            zip.putNextEntry(ZipEntry("kilometrina-$month.csv"))
+            zip.write("\uFEFF".toByteArray(Charsets.UTF_8))
+            zip.write(CsvExporter.build(monthTrips, month, settings).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("kilometrina-$month.pdf"))
+            PdfReportExporter.write(zip, monthTrips, month, settings)
+            zip.closeEntry()
+            attachments.filter { it.tripId in validIds }
+                .sortedWith(compareBy<AttachmentSummary> { it.tripId }.thenBy { it.createdAt }.thenBy { it.id })
+                .forEachIndexed { index, attachment ->
+                    val trip = monthTrips.first { it.id == attachment.tripId }
+                    val date = formatDate(trip.startTime).replace(" ", "").replace(".", "-")
+                    val safeName = sanitizeFileName(attachment.displayName).ifBlank { "priloga" }
+                    zip.putNextEntry(ZipEntry("priloge/$date-${attachment.tripId}-${index + 1}-$safeName"))
+                    copyAttachment(attachment, zip)
                     zip.closeEntry()
                 }
         }

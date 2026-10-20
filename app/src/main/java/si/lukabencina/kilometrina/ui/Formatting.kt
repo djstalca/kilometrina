@@ -4,6 +4,8 @@ import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
 import si.lukabencina.kilometrina.data.routeAddresses
 import java.text.NumberFormat
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -24,11 +26,17 @@ fun formatKm(meters: Double, decimals: Int = 1): String =
 
 fun formatMoney(amount: Double): String = NumberFormat.getCurrencyInstance(slLocale).format(amount)
 
-fun tripCompensation(trip: TripEntity): Double = if (trip.tripKind == TripKinds.PRIVATE) 0.0 else (trip.distanceMeters / 1000.0) * trip.ratePerKm
+fun tripCompensation(trip: TripEntity): Double = if (trip.tripKind == TripKinds.PRIVATE) 0.0 else
+    BigDecimal.valueOf(trip.distanceMeters).movePointLeft(3).multiply(BigDecimal.valueOf(trip.ratePerKm))
+        .setScale(2, RoundingMode.HALF_UP).toDouble()
 
-fun tripAdditionalCosts(trip: TripEntity): Double = if (trip.tripKind == TripKinds.PRIVATE) 0.0 else (trip.tollsCents + trip.parkingCents) / 100.0
+fun tripAdditionalCosts(trip: TripEntity): Double = if (trip.tripKind == TripKinds.PRIVATE) 0.0 else (trip.tollsCents.toLong() + trip.parkingCents.toLong()) / 100.0
 
-fun tripTotalCost(trip: TripEntity): Double = tripCompensation(trip) + tripAdditionalCosts(trip)
+fun sumMoney(amounts: Iterable<Double>): Double = amounts.fold(BigDecimal.ZERO) { sum, amount ->
+    sum + BigDecimal.valueOf(amount)
+}.setScale(2, RoundingMode.HALF_UP).toDouble()
+
+fun tripTotalCost(trip: TripEntity): Double = sumMoney(listOf(tripCompensation(trip), tripAdditionalCosts(trip)))
 
 fun shortLocation(address: String?): String {
     if (address.isNullOrBlank()) return "Lokacija ni na voljo"

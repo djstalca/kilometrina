@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.kotlin/
 /local.properties
 /.idea
 /build
@@ -8,3 +9,9 @@
 .cxx
 app/build
 .DS_Store
+*.jks
+*.keystore
+*.p12
+*.dpapi
+signing.json
+recovery-password.txt

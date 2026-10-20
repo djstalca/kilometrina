@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.data.AppSettings
-import si.lukabencina.kilometrina.data.AttachmentEntity
+import si.lukabencina.kilometrina.data.AttachmentSummary
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.Vehicle
@@ -48,7 +48,7 @@ data class HomeUiState(
     val vehicleState: VehicleState = VehicleState(),
     val recoveryRequired: Boolean = false,
     val trackingDiagnostics: TrackingDiagnosticsState = TrackingDiagnosticsState(),
-    val attachments: List<AttachmentEntity> = emptyList(),
+    val attachments: List<AttachmentSummary> = emptyList(),
 ) {
     val recentTrip: TripEntity?
         get() = trips.firstOrNull { it.endTime != null }
@@ -85,7 +85,7 @@ data class HomeUiState(
 private data class TripData(
     val active: TripEntity?,
     val trips: List<TripEntity>,
-    val attachments: List<AttachmentEntity>,
+    val attachments: List<AttachmentSummary>,
 )
 
 private data class PreferencesState(
@@ -309,9 +309,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.deleteTrip(id) }
     }
 
-    fun addAttachment(tripId: Long, displayName: String, mimeType: String, data: ByteArray) {
-        viewModelScope.launch { repository.addAttachment(tripId, displayName, mimeType, data) }
+    suspend fun addAttachment(tripId: Long, displayName: String, mimeType: String, data: ByteArray) {
+        repository.addAttachment(tripId, displayName, mimeType, data)
     }
+
+    suspend fun copyAttachment(attachment: AttachmentSummary, output: java.io.OutputStream) = repository.copyAttachment(attachment, output)
 
     fun deleteAttachment(id: Long) {
         viewModelScope.launch { repository.deleteAttachment(id) }

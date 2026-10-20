@@ -1,3 +1,6 @@
+import java.security.KeyStore
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -15,6 +18,16 @@ val hasReleaseSigning = listOf(
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
+// Reject a configured but incorrect signing key before any release can be built.
+if (hasReleaseSigning) {
+    val store = KeyStore.getInstance(file(requireNotNull(releaseKeystorePath)), requireNotNull(releaseKeystorePassword).toCharArray())
+    val certificate = requireNotNull(store.getCertificate(releaseKeyAlias)) { "Release signing alias is missing" }
+    val actual = MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
+        .joinToString("") { "%02X".format(it) }
+    val approved = rootProject.file("docs/release-certificate-sha256.txt").readText().trim()
+    check(actual == approved) { "Release signing certificate does not match the approved identity" }
+}
+
 android {
     namespace = "si.lukabencina.kilometrina"
     compileSdk = 37
@@ -23,8 +36,8 @@ android {
         applicationId = "si.lukabencina.kilometrina"
         minSdk = 26
         targetSdk = 36
-        versionCode = 116
-        versionName = "1.1.6"
+        versionCode = 117
+        versionName = "1.1.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -111,6 +124,10 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 ksp {

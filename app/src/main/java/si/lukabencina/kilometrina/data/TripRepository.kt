@@ -26,11 +26,13 @@ class TripRepository(
 ) {
     val trips: Flow<List<TripEntity>> = dao.observeTrips()
     val activeTrip: Flow<TripEntity?> = dao.observeActiveTrip()
-    val attachments: Flow<List<AttachmentEntity>> = dao.observeAttachments()
+    val attachments: Flow<List<AttachmentSummary>> = dao.observeAttachments()
 
     suspend fun getActiveTrip(): TripEntity? = dao.getActiveTrip()
     suspend fun getRoutePoints(tripId: Long): List<LocationPointEntity> = dao.getPointsForTrip(tripId)
-    suspend fun getAttachments(tripId: Long): List<AttachmentEntity> = dao.getAttachmentsForTrip(tripId)
+    suspend fun getAttachments(tripId: Long): List<AttachmentSummary> = dao.getAttachmentsForTrip(tripId)
+
+    suspend fun copyAttachment(attachment: AttachmentSummary, output: java.io.OutputStream) = dao.copyAttachment(attachment, output)
 
     suspend fun addAttachment(tripId: Long, displayName: String, mimeType: String, data: ByteArray): Long {
         require(data.isNotEmpty()) { "Priloga je prazna." }
@@ -57,6 +59,7 @@ class TripRepository(
         vehicle: Vehicle?,
         tripKind: String = TripKinds.BUSINESS,
     ): Long {
+        require(TripRules.isValidRate(ratePerKm)) { "Neveljavna postavka kilometrine." }
         val address = smartLocationLabel(location.latitude, location.longitude)
         val timestamp = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
         val id = dao.insertTrip(
@@ -90,6 +93,7 @@ class TripRepository(
     suspend fun addManualTrip(trip: TripEntity): Long {
         val endTime = requireNotNull(trip.endTime) { "Ročna vožnja mora imeti čas prihoda." }
         require(endTime > trip.startTime) { "Čas prihoda mora biti po času odhoda." }
+        TripRules.requireValidTripNumbers(trip)
 
         return dao.insertTrip(
             trip.copy(
@@ -153,7 +157,7 @@ class TripRepository(
             return LocationAppendResult(addedMeters = 0.0, evaluation = evaluation)
         }
 
-        dao.insertPoint(
+        dao.appendPointAndDistance(
             LocationPointEntity(
                 tripId = tripId,
                 timestamp = timestamp,
@@ -163,7 +167,6 @@ class TripRepository(
                 segmentMeters = segment,
             ),
         )
-        dao.addDistance(tripId, segment)
         return LocationAppendResult(addedMeters = segment, evaluation = evaluation)
     }
 
@@ -257,6 +260,7 @@ class TripRepository(
     suspend fun updateCompletedTrip(trip: TripEntity) {
         val endTime = trip.endTime ?: return
         if (endTime <= trip.startTime) return
+        TripRules.requireValidTripNumbers(trip)
         dao.updateTrip(
             trip.copy(
                 startAddress = trip.startAddress.trim().ifBlank { "Lokacija ni na voljo" },

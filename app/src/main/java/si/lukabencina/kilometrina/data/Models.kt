@@ -68,6 +68,16 @@ data class AttachmentEntity(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+/** Lightweight projection: never load receipt bytes just to render a screen. */
+data class AttachmentSummary(
+    val id: Long,
+    val tripId: Long,
+    val displayName: String,
+    val mimeType: String,
+    val createdAt: Long,
+    val sizeBytes: Long,
+)
+
 @Entity(
     tableName = "location_points",
     foreignKeys = [

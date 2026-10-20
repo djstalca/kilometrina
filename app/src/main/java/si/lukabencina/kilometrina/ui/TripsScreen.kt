@@ -55,6 +55,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,7 +77,12 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
-import si.lukabencina.kilometrina.data.AttachmentEntity
+import si.lukabencina.kilometrina.data.AttachmentSummary
+import si.lukabencina.kilometrina.data.AttachmentInput
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import si.lukabencina.kilometrina.data.SavedPlace
 import si.lukabencina.kilometrina.data.TripEntity
 import si.lukabencina.kilometrina.data.TripKinds
@@ -97,11 +103,11 @@ fun TripsScreen(
     savedPlaces: List<SavedPlace>,
     recentLocations: List<String>,
     vehicleState: VehicleState,
-    attachments: List<AttachmentEntity>,
+    attachments: List<AttachmentSummary>,
     onDeleteTrip: (Long) -> Unit,
     onUpdateTrip: (TripEntity) -> Unit,
     onAddManualTrip: (TripEntity) -> Unit,
-    onAddAttachment: (Long, String, String, ByteArray) -> Unit,
+    onAddAttachment: suspend (Long, String, String, ByteArray) -> Unit,
     initialEditTripId: Long? = null,
     onInitialEditConsumed: () -> Unit = {},
     detailViewModel: TripDetailViewModel = viewModel(),
@@ -126,7 +132,10 @@ fun TripsScreen(
     var editCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var detailCandidate by remember { mutableStateOf<TripEntity?>(null) }
     var showManualDialog by remember { mutableStateOf(false) }
-    var attachmentCandidate by remember { mutableStateOf<TripEntity?>(null) }
+    var attachmentTripId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var attachmentError by remember { mutableStateOf<String?>(null) }
+    var importingAttachment by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(initialEditTripId, completedTrips) {
         val tripId = initialEditTripId ?: return@LaunchedEffect
@@ -155,16 +164,26 @@ fun TripsScreen(
     val attachmentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        val trip = attachmentCandidate
-        attachmentCandidate = null
-        if (uri != null && trip != null) {
-            runCatching {
-                val mime = context.contentResolver.getType(uri).orEmpty()
-                val name = attachmentDisplayName(context, uri)
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: error("Priloge ni bilo mogoče prebrati.")
-                require(bytes.size <= 10 * 1024 * 1024) { "Priloga je večja od 10 MB." }
-                onAddAttachment(trip.id, name, mime, bytes)
+        val tripId = attachmentTripId
+        attachmentTripId = null
+        if (uri != null && tripId != null) {
+            scope.launch {
+                importingAttachment = true
+                try {
+                    withContext(Dispatchers.IO) {
+                        val mime = context.contentResolver.getType(uri).orEmpty()
+                        val name = attachmentDisplayName(context, uri)
+                        val bytes = context.contentResolver.openInputStream(uri)?.use(AttachmentInput::read)
+                            ?: error("Priloge ni bilo mogoče prebrati.")
+                        onAddAttachment(tripId, name, mime, bytes)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    attachmentError = error.message ?: "Dodajanje priloge ni uspelo."
+                } finally {
+                    importingAttachment = false
+                }
             }
         }
     }
@@ -251,13 +270,24 @@ fun TripsScreen(
                     onOpen = { detailCandidate = trip },
                     onEdit = { editCandidate = trip },
                     onAttach = {
-                        attachmentCandidate = trip
-                        attachmentLauncher.launch(arrayOf("image/*", "application/pdf"))
+                        if (!importingAttachment) {
+                            attachmentTripId = trip.id
+                            attachmentLauncher.launch(arrayOf("image/*", "application/pdf"))
+                        }
                     },
                     onDelete = { deleteCandidate = trip },
                 )
             }
         }
+    }
+
+    attachmentError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { attachmentError = null },
+            title = { Text("Priloge ni bilo mogoče dodati") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { attachmentError = null }) { Text("Zapri") } },
+        )
     }
 
     if (showManualDialog) {
@@ -508,7 +538,7 @@ private fun ManualTripDialog(
 }
 
 @Composable
-private fun EditTripDialog(
+internal fun EditTripDialog(
     trip: TripEntity,
     savedPlaces: List<SavedPlace>,
     recentLocations: List<String>,
@@ -524,19 +554,26 @@ private fun EditTripDialog(
     var startAddress by remember(trip.id) { mutableStateOf(trip.startAddress) }
     var endAddress by remember(trip.id) { mutableStateOf(trip.endAddress.orEmpty()) }
     var routeStops by remember(trip.id) { mutableStateOf(trip.routeStops()) }
+    var distanceChanged by remember(trip.id) { mutableStateOf(false) }
+    var rateChanged by remember(trip.id) { mutableStateOf(false) }
     var distanceKm by remember(trip.id) { mutableStateOf(decimalInput(trip.distanceMeters / 1000.0, 1)) }
     var ratePerKm by remember(trip.id) { mutableStateOf(decimalInput(trip.ratePerKm, 2)) }
     var parking by remember(trip.id) { mutableStateOf(decimalInput(trip.parkingCents / 100.0, 2)) }
     var tolls by remember(trip.id) { mutableStateOf(decimalInput(trip.tollsCents / 100.0, 2)) }
-    val snapshotVehicle = remember(trip.id) {
-        if (trip.vehicleName.isNotBlank() && vehicleState.vehicles.none { it.id == trip.vehicleId }) {
-            Vehicle(id = trip.vehicleId.ifBlank { "snapshot-${trip.id}" }, name = trip.vehicleName, registrationPlate = trip.registrationPlate)
+    val snapshotVehicle = remember(trip.id, vehicleState.vehicles) {
+        if ((trip.vehicleName.isNotBlank() || trip.registrationPlate.isNotBlank()) && vehicleState.vehicles.none {
+                it.id == trip.vehicleId && it.name == trip.vehicleName && it.registrationPlate == trip.registrationPlate
+            }) {
+            val localId = generateSequence("snapshot-${trip.id}") { "$it#" }
+                .first { candidate -> vehicleState.vehicles.none { it.id == candidate } }
+            Vehicle(id = localId, name = trip.vehicleName, registrationPlate = trip.registrationPlate)
         } else null
     }
     val vehicleOptions = remember(vehicleState.vehicles, snapshotVehicle) {
         buildList { snapshotVehicle?.let(::add); addAll(vehicleState.vehicles) }.distinctBy { it.id }
     }
-    var selectedVehicleId by remember(trip.id) { mutableStateOf(trip.vehicleId.ifBlank { vehicleState.defaultVehicle?.id.orEmpty() }) }
+    var selectedVehicleId by remember(trip.id) { mutableStateOf(snapshotVehicle?.id ?: trip.vehicleId) }
+    var vehicleChanged by remember(trip.id) { mutableStateOf(false) }
     var errorMessage by remember(trip.id) { mutableStateOf<String?>(null) }
 
     TripEditorDialog(
@@ -559,13 +596,13 @@ private fun EditTripDialog(
                     routeStopsJson = TripRouteCodec.encode(routeStops),
                     startAddress = startAddress.trim().ifBlank { "Lokacija ni na voljo" },
                     endAddress = endAddress.trim().ifBlank { "Lokacija ni na voljo" },
-                    distanceMeters = values.distanceKm * 1000.0,
-                    ratePerKm = values.ratePerKm,
+                    distanceMeters = if (distanceChanged) values.distanceKm * 1000.0 else trip.distanceMeters,
+                    ratePerKm = if (rateChanged) values.ratePerKm else trip.ratePerKm,
                     parkingCents = (values.parking * 100.0).roundToInt(),
                     tollsCents = (values.tolls * 100.0).roundToInt(),
-                    vehicleId = vehicle?.id.orEmpty(),
-                    vehicleName = vehicle?.name.orEmpty(),
-                    registrationPlate = vehicle?.registrationPlate.orEmpty(),
+                    vehicleId = if (!vehicleChanged || selectedVehicleId == snapshotVehicle?.id) trip.vehicleId else vehicle?.id.orEmpty(),
+                    vehicleName = if (!vehicleChanged || selectedVehicleId == snapshotVehicle?.id) trip.vehicleName else vehicle?.name.orEmpty(),
+                    registrationPlate = if (!vehicleChanged || selectedVehicleId == snapshotVehicle?.id) trip.registrationPlate else vehicle?.registrationPlate.orEmpty(),
                     tripKind = tripKind,
                 ),
             )
@@ -597,16 +634,16 @@ private fun EditTripDialog(
             endDateTime = endDateTime,
             onEndDateTimeChange = { endDateTime = it },
             distanceKm = distanceKm,
-            onDistanceKmChange = { distanceKm = it },
+            onDistanceKmChange = { distanceKm = it; distanceChanged = true },
             ratePerKm = ratePerKm,
-            onRatePerKmChange = { ratePerKm = it },
+            onRatePerKmChange = { ratePerKm = it; rateChanged = true },
             parking = parking,
             onParkingChange = { parking = it },
             tolls = tolls,
             onTollsChange = { tolls = it },
             vehicles = vehicleOptions,
             selectedVehicleId = selectedVehicleId,
-            onVehicleSelected = { selectedVehicleId = it },
+            onVehicleSelected = { selectedVehicleId = it; vehicleChanged = true },
             errorMessage = errorMessage,
         )
     }
@@ -962,7 +999,7 @@ private fun validateForm(
     val rateValue = parseDecimal(ratePerKm)
     val parkingValue = parseOptionalDecimal(parking)
     val tollsValue = parseOptionalDecimal(tolls)
-    if (kmValue == null || rateValue == null || parkingValue == null || tollsValue == null || kmValue < 0.0 || rateValue < 0.0 || parkingValue < 0.0 || tollsValue < 0.0) return null
+    if (kmValue == null || rateValue == null || parkingValue == null || tollsValue == null || !TripRules.areValidNumbers(kmValue, rateValue, parkingValue, tollsValue)) return null
     return ValidatedTripValues(kmValue, rateValue, parkingValue, tollsValue)
 }
 

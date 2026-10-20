@@ -57,7 +57,7 @@ object StatisticsCalculator {
                 month = month,
                 tripCount = monthTrips.size,
                 distanceKm = monthTrips.sumOf { it.distanceMeters } / 1000.0,
-                totalAmount = monthTrips.sumOf(::tripTotalCost),
+                totalAmount = sumMoney(monthTrips.map(::tripTotalCost)),
             )
         }
 
@@ -68,7 +68,7 @@ object StatisticsCalculator {
                     route = route,
                     tripCount = routeTrips.size,
                     distanceKm = routeTrips.sumOf { it.distanceMeters } / 1000.0,
-                    totalAmount = routeTrips.sumOf(::tripTotalCost),
+                    totalAmount = sumMoney(routeTrips.map(::tripTotalCost)),
                 )
             }
             .sortedWith(compareByDescending<RouteStatistics> { it.tripCount }.thenByDescending { it.distanceKm })
@@ -86,7 +86,7 @@ object StatisticsCalculator {
                     vehicle = vehicle,
                     tripCount = vehicleTrips.size,
                     distanceKm = vehicleTrips.sumOf { it.distanceMeters } / 1000.0,
-                    totalAmount = vehicleTrips.sumOf(::tripTotalCost),
+                    totalAmount = sumMoney(vehicleTrips.map(::tripTotalCost)),
                 )
             }
             .sortedByDescending { it.distanceKm }
@@ -95,9 +95,9 @@ object StatisticsCalculator {
             year = year,
             tripCount = completed.size,
             distanceKm = completed.sumOf { it.distanceMeters } / 1000.0,
-            mileageAmount = completed.sumOf(::tripCompensation),
-            additionalCosts = completed.sumOf(::tripAdditionalCosts),
-            totalAmount = completed.sumOf(::tripTotalCost),
+            mileageAmount = sumMoney(completed.map(::tripCompensation)),
+            additionalCosts = sumMoney(completed.map(::tripAdditionalCosts)),
+            totalAmount = sumMoney(completed.map(::tripTotalCost)),
             months = months,
             topRoutes = topRoutes,
             vehicles = vehicles,

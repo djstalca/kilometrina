@@ -170,8 +170,8 @@ fun HomeScreen(
             )
         }
 
-        AnimatedContent(targetState = uiState.activeTrip != null, label = "trip-state") { hasActiveTrip ->
-            if (!hasActiveTrip) {
+        AnimatedContent(targetState = uiState.activeTrip, contentKey = { it?.id }, label = "trip-state") { activeTrip ->
+            if (activeTrip == null) {
                 ReadyCard(
                     purpose = purpose,
                     onPurposeChange = { purpose = it },
@@ -184,7 +184,7 @@ fun HomeScreen(
                 )
             } else {
                 ActiveTripCard(
-                    trip = requireNotNull(uiState.activeTrip),
+                    trip = activeTrip,
                     diagnostics = uiState.trackingDiagnostics,
                     recoveryRequired = uiState.recoveryRequired,
                     recoveryState = startState,

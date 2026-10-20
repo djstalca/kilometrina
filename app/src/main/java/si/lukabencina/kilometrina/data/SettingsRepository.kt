@@ -48,6 +48,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun setRatePerKm(value: Double) {
+        require(TripRules.isValidRate(value)) { "Neveljavna postavka kilometrine." }
         context.dataStore.edit { it[rateKey] = value.coerceIn(0.0, 10.0) }
     }
 

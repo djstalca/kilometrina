@@ -151,7 +151,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 app.savedPlaceRepository.seedDefaultPlacesIfNeeded()
                 app.savedPlaceRepository.resolveMissingCoordinates()
-                repository.refreshAutomaticRoutes()
             }
             if (settings.autoDetectionEnabled && DrivingDetectionManager.hasPermission(application)) {
                 runCatching { DrivingDetectionManager.enable(application) }

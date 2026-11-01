@@ -40,7 +40,7 @@ fun tripTotalCost(trip: TripEntity): Double = sumMoney(listOf(tripCompensation(t
 
 fun shortLocation(address: String?): String {
     if (address.isNullOrBlank()) return "Lokacija ni na voljo"
-    return address.split(',').take(2).joinToString(", ").trim()
+    return address.trim()
 }
 
 

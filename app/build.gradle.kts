@@ -36,8 +36,8 @@ android {
         applicationId = "si.lukabencina.kilometrina"
         minSdk = 26
         targetSdk = 36
-        versionCode = 119
-        versionName = "1.1.9"
+        versionCode = 120
+        versionName = "1.1.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -58,7 +58,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     val summary = repository.restoreBackupJson(raw)
                     app.savedPlaceRepository.seedDefaultPlacesIfNeeded(force = true)
                     app.savedPlaceRepository.resolveMissingCoordinates()
-                    app.tripRepository.refreshAutomaticRoutes()
                     syncPermissionsAfterRestore()
                     summary
                 }

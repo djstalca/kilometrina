@@ -195,8 +195,7 @@ class TripRepository(
         val endAddress = finalLocation?.let {
             matchedPlace?.name ?: reverseGeocode(it.latitude, it.longitude)
         } ?: "Lokacija ni na voljo"
-        val startAddress = savedPlaceRepository.displayNameFor(active.startLat, active.startLon)
-            ?: active.startAddress
+        val startAddress = active.startAddress
         val endTime = System.currentTimeMillis()
         val genericPurpose = active.purpose.trim().equals("Službena pot", ignoreCase = true)
         val savedPlacePurpose = matchedPlace?.defaultPurpose?.takeIf { it.isNotBlank() && genericPurpose }
@@ -228,43 +227,6 @@ class TripRepository(
                 calendarTitle = calendarSuggestion?.title.orEmpty(),
             ),
         )
-    }
-
-    suspend fun refreshAutomaticRoutes() {
-        dao.getAllTrips()
-            .asSequence()
-            .filter { it.endTime != null && it.routeDetectionVersion < 1 }
-            .forEach { trip ->
-                val points = dao.getPointsForTrip(trip.id)
-                val startAddress = if (validCoordinates(trip.startLat, trip.startLon)) {
-                    savedPlaceRepository.displayNameFor(trip.startLat, trip.startLon) ?: trip.startAddress
-                } else {
-                    trip.startAddress
-                }
-                val endAddress = if (
-                    trip.endLat != null && trip.endLon != null &&
-                    validCoordinates(trip.endLat, trip.endLon)
-                ) {
-                    savedPlaceRepository.displayNameFor(trip.endLat, trip.endLon) ?: trip.endAddress
-                } else {
-                    trip.endAddress
-                }
-                val stops = if (trip.routeStops().isNotEmpty()) {
-                    trip.routeStops()
-                } else {
-                    automaticStopLabels(points, startAddress, endAddress.orEmpty())
-                }
-
-                dao.updateCompletedDetails(
-                    trip.copy(
-                        startAddress = startAddress,
-                        endAddress = endAddress,
-                        routeStopsJson = TripRouteCodec.encode(stops),
-                        routeDetectionVersion = 1,
-                        routeReviewPending = false,
-                    ),
-                )
-            }
     }
 
     suspend fun updateCompletedTrip(trip: TripEntity) {
@@ -338,27 +300,17 @@ class TripRepository(
         return labels.take(TripRouteCodec.MAX_STOPS)
     }
 
-    private suspend fun reverseGeocodeStop(lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
+    private suspend fun reverseGeocodeStop(lat: Double, lon: Double): String? = resolveLocationLabel(lat, lon)
+
+    private suspend fun resolveLocationLabel(lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
         runCatching {
             @Suppress("DEPRECATION")
-            Geocoder(context, Locale.forLanguageTag("sl-SI"))
-                .getFromLocation(lat, lon, 1)
-                ?.firstOrNull()
-                ?.let { address ->
-                    listOfNotNull(
-                        address.locality,
-                        address.subLocality,
-                        address.subAdminArea,
-                        address.thoroughfare,
-                    )
-                        .map(String::trim)
-                        .firstOrNull { it.isNotBlank() }
-                }
+            Geocoder(context, Locale.forLanguageTag("sl-SI")).getFromLocation(lat, lon, 1)?.firstOrNull()?.let { address ->
+                preciseLocationLabel(address.thoroughfare, address.subThoroughfare, address.locality,
+                    address.subLocality, address.getAddressLine(0), address.countryCode, address.countryName)
+            }
         }.getOrNull()
     }
-
-    private fun validCoordinates(lat: Double, lon: Double): Boolean =
-        lat.isFinite() && lat in -90.0..90.0 && lon.isFinite() && lon in -180.0..180.0
 
     private fun normalizeTripKind(value: String): String =
         if (value == TripKinds.PRIVATE) TripKinds.PRIVATE else TripKinds.BUSINESS
@@ -366,20 +318,6 @@ class TripRepository(
     private suspend fun smartLocationLabel(lat: Double, lon: Double): String =
         savedPlaceRepository.displayNameFor(lat, lon) ?: reverseGeocode(lat, lon)
 
-    private suspend fun reverseGeocode(lat: Double, lon: Double): String = withContext(Dispatchers.IO) {
-        runCatching {
-            @Suppress("DEPRECATION")
-            Geocoder(context, Locale.forLanguageTag("sl-SI"))
-                .getFromLocation(lat, lon, 1)
-                ?.firstOrNull()
-                ?.let { address ->
-                    listOfNotNull(
-                        address.thoroughfare,
-                        address.subLocality ?: address.locality,
-                        address.countryName,
-                    ).distinct().joinToString(", ")
-                }
-                ?.takeIf { it.isNotBlank() }
-        }.getOrNull() ?: String.format(Locale.US, "%.5f, %.5f", lat, lon)
-    }
+    private suspend fun reverseGeocode(lat: Double, lon: Double): String =
+        resolveLocationLabel(lat, lon) ?: String.format(Locale.US, "%.5f, %.5f", lat, lon)
 }

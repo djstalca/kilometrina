@@ -8,14 +8,23 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TripEntity::class, LocationPointEntity::class, AttachmentEntity::class],
-    version = 6,
+    entities = [TripEntity::class, LocationPointEntity::class, AttachmentEntity::class, ExpenseEntity::class],
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
 
     companion object {
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS expenses (id TEXT NOT NULL PRIMARY KEY, tripId INTEGER NOT NULL, kind TEXT NOT NULL, amountCents INTEGER NOT NULL, note TEXT NOT NULL, createdAt INTEGER NOT NULL, attachmentId INTEGER, FOREIGN KEY(tripId) REFERENCES trips(id) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(attachmentId) REFERENCES attachments(id) ON UPDATE NO ACTION ON DELETE SET NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_tripId ON expenses(tripId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_expenses_attachmentId ON expenses(attachmentId)")
+                db.execSQL("INSERT INTO expenses SELECT 'legacy-' || id || '-PARKING', id, 'PARKING', parkingCents, 'Preneseni skupni stroški', startTime, NULL FROM trips WHERE parkingCents > 0")
+                db.execSQL("INSERT INTO expenses SELECT 'legacy-' || id || '-TOLL', id, 'TOLL', tollsCents, 'Preneseni skupni stroški', startTime, NULL FROM trips WHERE tollsCents > 0")
+            }
+        }
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE trips ADD COLUMN vehicleId TEXT NOT NULL DEFAULT ''")
@@ -71,7 +80,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "kilometrina.db",
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
     }
 }

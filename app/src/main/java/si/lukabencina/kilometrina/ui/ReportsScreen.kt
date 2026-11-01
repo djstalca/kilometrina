@@ -72,6 +72,8 @@ fun ReportsScreen(
     settings: AppSettings,
     attachments: List<AttachmentSummary>,
     copyAttachment: suspend (AttachmentSummary, OutputStream) -> Unit,
+    expenses: List<si.lukabencina.kilometrina.data.ExpenseEntity> = emptyList(),
+    loadPackageSnapshot: (suspend () -> si.lukabencina.kilometrina.data.ReportExportSnapshot)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -150,7 +152,9 @@ fun ReportsScreen(
     ) { uri ->
         if (uri != null) {
             export(uri) { output ->
-                MonthPackageExporter.writeFromRepository(output, trips, selectedMonth, settings, attachments, copyAttachment)
+                val snapshot = loadPackageSnapshot?.invoke()
+                MonthPackageExporter.writeFromRepository(output, snapshot?.trips ?: trips, selectedMonth, settings,
+                    snapshot?.attachments ?: attachments, copyAttachment, snapshot?.expenses ?: expenses)
             }
         }
     }

@@ -108,6 +108,7 @@ fun TripsScreen(
     onUpdateTrip: (TripEntity) -> Unit,
     onAddManualTrip: (TripEntity) -> Unit,
     onAddAttachment: suspend (Long, String, String, ByteArray) -> Unit,
+    onOpenExpenses: (Long) -> Unit = {},
     initialEditTripId: Long? = null,
     onInitialEditConsumed: () -> Unit = {},
     detailViewModel: TripDetailViewModel = viewModel(),
@@ -269,6 +270,7 @@ fun TripsScreen(
                     attachmentCount = attachments.count { it.tripId == trip.id },
                     onOpen = { detailCandidate = trip },
                     onEdit = { editCandidate = trip },
+                    onExpenses = { onOpenExpenses(trip.id) },
                     onAttach = {
                         if (!importingAttachment) {
                             attachmentTripId = trip.id
@@ -367,6 +369,7 @@ private fun TripRow(
     attachmentCount: Int,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
+    onExpenses: () -> Unit,
     onAttach: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -405,6 +408,7 @@ private fun TripRow(
                 IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, contentDescription = "Uredi vožnjo") }
                 IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Izbriši vožnjo") }
             }
+            TextButton(onClick = onExpenses) { Text("Stroški") }
             if (trip.tripKind == TripKinds.PRIVATE) {
                 Text("Zasebna vožnja", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
             }
@@ -637,6 +641,7 @@ internal fun EditTripDialog(
             onDistanceKmChange = { distanceKm = it; distanceChanged = true },
             ratePerKm = ratePerKm,
             onRatePerKmChange = { ratePerKm = it; rateChanged = true },
+            costsEditable = false,
             parking = parking,
             onParkingChange = { parking = it },
             tolls = tolls,
@@ -728,6 +733,7 @@ private fun TripFormFields(
     onRatePerKmChange: (String) -> Unit,
     parking: String,
     onParkingChange: (String) -> Unit,
+    costsEditable: Boolean = true,
     tolls: String,
     onTollsChange: (String) -> Unit,
     vehicles: List<Vehicle>,
@@ -866,8 +872,9 @@ private fun TripFormFields(
 
         OutlinedTextField(value = distanceKm, onValueChange = onDistanceKmChange, label = { Text("Kilometri") }, suffix = { Text("km") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), singleLine = true)
         OutlinedTextField(value = ratePerKm, onValueChange = onRatePerKmChange, label = { Text("Postavka") }, suffix = { Text("€/km") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = parking, onValueChange = onParkingChange, label = { Text("Parkirnina") }, suffix = { Text("€") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = tolls, onValueChange = onTollsChange, label = { Text("Cestnina") }, suffix = { Text("€") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), singleLine = true)
+        if (!costsEditable) Text("Parkirnine in cestnine urejaš z gumbom Stroški pri vožnji.", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(value = parking, readOnly = !costsEditable, onValueChange = onParkingChange, label = { Text("Parkirnina") }, suffix = { Text("€") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), singleLine = true)
+        OutlinedTextField(value = tolls, readOnly = !costsEditable, onValueChange = onTollsChange, label = { Text("Cestnina") }, suffix = { Text("€") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(), singleLine = true)
         errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }

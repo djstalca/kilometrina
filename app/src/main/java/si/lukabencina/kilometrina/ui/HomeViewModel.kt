@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import si.lukabencina.kilometrina.data.ExpenseEntity
 import kotlinx.coroutines.tasks.await
 import si.lukabencina.kilometrina.KilometrinaApplication
 import si.lukabencina.kilometrina.data.AppSettings
@@ -49,6 +51,7 @@ data class HomeUiState(
     val recoveryRequired: Boolean = false,
     val trackingDiagnostics: TrackingDiagnosticsState = TrackingDiagnosticsState(),
     val attachments: List<AttachmentSummary> = emptyList(),
+    val expenses: List<ExpenseEntity> = emptyList(),
 ) {
     val recentTrip: TripEntity?
         get() = trips.firstOrNull { it.endTime != null }
@@ -86,6 +89,7 @@ private data class TripData(
     val active: TripEntity?,
     val trips: List<TripEntity>,
     val attachments: List<AttachmentSummary>,
+    val expenses: List<ExpenseEntity>,
 )
 
 private data class PreferencesState(
@@ -112,8 +116,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         repository.activeTrip,
         repository.trips,
         repository.attachments,
-    ) { active, trips, attachments ->
-        TripData(active, trips, attachments)
+        repository.expenses,
+    ) { active, trips, attachments, expenses ->
+        TripData(active, trips, attachments, expenses)
     }
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -131,6 +136,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             recoveryRequired = recovery && tripDataValue.active != null,
             trackingDiagnostics = diagnostics,
             attachments = tripDataValue.attachments,
+            expenses = tripDataValue.expenses,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -308,6 +314,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteTrip(id: Long) {
         viewModelScope.launch { repository.deleteTrip(id) }
     }
+
+    suspend fun saveExpense(expense: ExpenseEntity) = viewModelScope.async { repository.saveExpense(expense) }.await()
+    suspend fun getExportSnapshot() = repository.getExportSnapshot()
+    suspend fun deleteExpense(id: String) = viewModelScope.async { repository.deleteExpense(id) }.await()
+    suspend fun addExpenseReceipt(id: String, tripId: Long, name: String, mime: String, bytes: ByteArray) =
+        viewModelScope.async { repository.addExpenseReceipt(id, tripId, name, mime, bytes) }.await()
 
     suspend fun addAttachment(tripId: Long, displayName: String, mimeType: String, data: ByteArray) {
         repository.addAttachment(tripId, displayName, mimeType, data)

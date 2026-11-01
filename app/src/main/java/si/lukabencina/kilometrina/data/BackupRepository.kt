@@ -35,7 +35,7 @@ class BackupRepository(
         )
     }
 
-    private suspend fun snapshot(): BackupData = BackupData(
+    private suspend fun snapshot(): BackupData = database.withTransaction { BackupData(
         generatedAt = System.currentTimeMillis(),
         settings = settingsRepository.settings.first(),
         savedPlaces = savedPlaceRepository.places.first(),
@@ -43,16 +43,19 @@ class BackupRepository(
         trips = dao.getAllTrips(),
         points = dao.getAllPoints(),
         attachments = dao.getAllAttachments(),
-    )
+        expenses = dao.getExpenses(),
+    ) }
 
     private suspend fun apply(data: BackupData) {
         database.withTransaction {
+            dao.deleteAllExpenses()
             dao.deleteAllAttachments()
             dao.deleteAllPoints()
             dao.deleteAllTrips()
             if (data.trips.isNotEmpty()) dao.insertTrips(data.trips)
             if (data.points.isNotEmpty()) dao.insertPoints(data.points)
             if (data.attachments.isNotEmpty()) dao.insertAttachments(data.attachments)
+            if (data.expenses.isNotEmpty()) dao.insertExpenses(data.expenses)
         }
         settingsRepository.replaceAll(data.settings)
         savedPlaceRepository.replaceAll(data.savedPlaces)

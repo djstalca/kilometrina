@@ -38,6 +38,7 @@ private enum class MainTab(val label: String) {
 fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTabName by rememberSaveable { mutableStateOf(MainTab.Home.name) }
+    var expenseTripId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editTripId by rememberSaveable { mutableStateOf<Long?>(null) }
     val selectedTab = MainTab.valueOf(selectedTabName)
 
@@ -69,6 +70,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
             when (selectedTab) {
                 MainTab.Home -> HomeScreen(
                     uiState = uiState,
+                    onOpenExpenses = { expenseTripId = it },
                     onStart = viewModel::startTrip,
                     onStop = viewModel::stopTrip,
                     onResumeRecovered = viewModel::resumeRecoveredTrip,
@@ -82,6 +84,7 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                 )
                 MainTab.Trips -> TripsScreen(
                     trips = uiState.trips,
+                    onOpenExpenses = { expenseTripId = it },
                     defaultRatePerKm = uiState.settings.ratePerKm,
                     savedPlaces = uiState.savedPlaces,
                     recentLocations = uiState.recentLocations,
@@ -99,6 +102,8 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
                     settings = uiState.settings,
                     attachments = uiState.attachments,
                     copyAttachment = viewModel::copyAttachment,
+                    expenses = uiState.expenses,
+                    loadPackageSnapshot = viewModel::getExportSnapshot,
                 )
                 MainTab.Data -> BackupScreen(
                     tripCount = uiState.trips.count { it.endTime != null },
@@ -122,4 +127,10 @@ fun KilometrinaApp(viewModel: HomeViewModel = viewModel()) {
             }
         }
     }
+    expenseTripId?.let { tripId ->
+        ExpenseManagerDialog(tripId, uiState.expenses, uiState.attachments,
+            viewModel::saveExpense, viewModel::deleteExpense, viewModel::addExpenseReceipt,
+            onDismiss = { expenseTripId = null }, copyReceipt = viewModel::copyAttachment)
+    }
+
 }

@@ -82,6 +82,12 @@ for spec in json.loads((OUT/'package-results.json').read_text(encoding='utf-8'))
             checks['valid_names']=all(not re.search(r'[\\:*?"<>|\x00-\x1f]',p) and not any(x in ('..','.') for x in p.split('/')) for p in names)
             expected_attach={'empty':0,'multiple':3,'duplicate_name':2,'sanitized_collision':2,'long_collision':2,'invalid_filename':1}[name]
             checks['expected_attachments']=sum(p.startswith('priloge/') for p in names)==expected_attach
+            ledger=list(csv.reader(io.StringIO(z.read('stroski-2026-10.csv').decode('utf-8-sig')),delimiter=';'))[1:]
+            checks['expense_ids_unique']=len({r[2] for r in ledger})==len(ledger)
+            checks['expense_receipt_paths_valid']=all(not r[6] or r[6] in names for r in ledger)
+            trip_csv=list(csv.reader(io.StringIO(z.read('kilometrina-2026-10.csv').decode('utf-8-sig')),delimiter=';'))
+            totals={r[0]:r[1] for r in trip_csv if len(r)==2}
+            checks['expense_totals_reconcile']=all(sum((Decimal(r[4].replace(',','.')) for r in ledger if r[3]==kind),Decimal(0))==Decimal(totals[key].replace(',','.')) for kind,key in [('Parkirnina','Parkirnine skupaj EUR'),('Cestnina','Cestnine skupaj EUR')])
             raw=z.read('kilometrina-2026-10.csv').decode('utf-8-sig');checks['private_other_month_excluded']='private.pdf' not in names and 'november.pdf' not in names and 'Vožnja 5' not in raw and 'Vožnja 6' not in raw
             checks['slovenian_utf8']='Črt Šušterič' in raw
             with pdfplumber.open(io.BytesIO(z.read('kilometrina-2026-10.pdf'))) as p:checks['pdf_parses']=len(p.pages)==1

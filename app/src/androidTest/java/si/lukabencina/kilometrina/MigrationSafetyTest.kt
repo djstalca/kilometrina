@@ -22,14 +22,14 @@ class MigrationSafetyTest {
   private val runId=System.nanoTime()
   private val context get()=InstrumentationRegistry.getInstrumentation().targetContext
   private val dir get()=File(context.getExternalFilesDir(null),"release-regression").apply{mkdirs()}
-  private val migrations get()=(1..5).map{v-> AppDatabase::class.java.getDeclaredField("MIGRATION_${v}_${v+1}").apply{isAccessible=true}.get(null) as Migration}
+  private val migrations get()=(1..6).map{v-> AppDatabase::class.java.getDeclaredField("MIGRATION_${v}_${v+1}").apply{isAccessible=true}.get(null) as Migration}
   private fun trip(id:Long=1)=TripEntity(id=id,startTime=1790841600000L,endTime=1790845200000L,startLat=46.0,startLon=14.0,startAddress="Škofja Loka",endAddress="Prodent",distanceMeters=12345.0,purpose="Servis",description="Žična oprema",routeStopsJson=TripRouteCodec.encode(listOf("Črnomelj","Žužemberk")),routeDetectionVersion=1,routeReviewPending=true,vehicleId="old",vehicleName="Old Škoda",registrationPlate="LJ-OLD",parkingCents=250,tollsCents=700,tripKind=TripKinds.PRIVATE)
   @Test fun freshDatabaseAndEveryLegacyUpgrade()=runBlocking<Unit> {
     val results=JSONArray()
     val freshName="migration-test-fresh-$runId.db"
     val fresh=Room.databaseBuilder(context,AppDatabase::class.java,freshName).build()
-    try{fresh.tripDao().insertTrip(trip());assertEquals("Old Škoda",fresh.tripDao().getAllTrips().single().vehicleName);results.put(JSONObject().put("case","fresh-v6").put("pass",true))}finally{fresh.close();context.deleteDatabase(freshName)}
-    for(v in 1..5){
+    try{fresh.tripDao().insertTrip(trip());assertEquals("Old Škoda",fresh.tripDao().getAllTrips().single().vehicleName);results.put(JSONObject().put("case","fresh-v7").put("pass",true))}finally{fresh.close();context.deleteDatabase(freshName)}
+    for(v in 1..6){
       val name="migration-test-$runId-$v.db"
       try{
         val helper=FrameworkSQLiteOpenHelperFactory().create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object:SupportSQLiteOpenHelper.Callback(v){
@@ -45,10 +45,10 @@ class MigrationSafetyTest {
         }).build())
         helper.writableDatabase;helper.close()
         val db=Room.databaseBuilder(context,AppDatabase::class.java,name).addMigrations(*migrations.toTypedArray()).build()
-        try{val restored=db.tripDao().getAllTrips().single();assertEquals("Škofja Loka",restored.startAddress);assertEquals(12345.0,restored.distanceMeters,0.0001);assertEquals(700,restored.tollsCents);assertEquals(250,restored.parkingCents);assertEquals(1,db.tripDao().getAllPoints().size);assertTrue(restored.routeStops().isEmpty());results.put(JSONObject().put("case","$v-to-6").put("pass",true))}finally{db.close()}
-      }catch(e:Throwable){results.put(JSONObject().put("case","$v-to-6").put("pass",false).put("error",e.toString()))}finally{context.deleteDatabase(name)}
+        try{val restored=db.tripDao().getAllTrips().single();assertEquals("Škofja Loka",restored.startAddress);assertEquals(12345.0,restored.distanceMeters,0.0001);assertEquals(700,restored.tollsCents);assertEquals(250,restored.parkingCents);assertEquals(2,db.tripDao().getTripExpenses(1).size);assertEquals(950,db.tripDao().getTripExpenses(1).sumOf{it.amountCents});assertEquals(1,db.tripDao().getAllPoints().size);assertTrue(restored.routeStops().isEmpty());results.put(JSONObject().put("case","$v-to-7").put("pass",true))}finally{db.close()}
+      }catch(e:Throwable){results.put(JSONObject().put("case","$v-to-7").put("pass",false).put("error",e.toString()))}finally{context.deleteDatabase(name)}
     }
     File(dir,"migration-results.json").writeText(results.toString(2))
-    assertEquals(6,results.length()); assertTrue((0 until results.length()).all { results.getJSONObject(it).getBoolean("pass") })
+    assertEquals(7,results.length()); assertTrue((0 until results.length()).all { results.getJSONObject(it).getBoolean("pass") })
   }
 }

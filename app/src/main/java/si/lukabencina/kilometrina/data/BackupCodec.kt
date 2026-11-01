@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.util.Base64
 
 private const val BACKUP_FORMAT = "kilometrina-backup"
-private const val BACKUP_SCHEMA_VERSION = 6
+private const val BACKUP_SCHEMA_VERSION = 7
 private const val MIN_SUPPORTED_SCHEMA_VERSION = 1
 private const val MAX_TRIPS = 50_000
 private const val MAX_POINTS = 750_000
@@ -22,6 +22,7 @@ data class BackupData(
     val trips: List<TripEntity>,
     val points: List<LocationPointEntity>,
     val attachments: List<AttachmentEntity> = emptyList(),
+    val expenses: List<ExpenseEntity> = ExpenseRules.legacy(trips),
 )
 
 object BackupCodec {
@@ -36,6 +37,7 @@ object BackupCodec {
             .put("trips", JSONArray().apply { data.trips.forEach { put(tripToJson(it)) } })
             .put("points", JSONArray().apply { data.points.forEach { put(pointToJson(it)) } })
             .put("attachments", JSONArray().apply { data.attachments.forEach { put(attachmentToJson(it)) } })
+            .put("expenses", JSONArray().apply { data.expenses.forEach { put(expenseToJson(it)) } })
         return root.toString(2)
     }
 
@@ -77,7 +79,13 @@ object BackupCodec {
         val points = List(pointsArray.length()) { pointFromJson(pointsArray.getJSONObject(it)) }
         val places = List(placesArray.length()) { placeFromJson(placesArray.getJSONObject(it)) }
         val attachments = List(attachmentsArray.length()) { attachmentFromJson(attachmentsArray.getJSONObject(it)) }
+        val expenses = if (schema >= 7) {
+            val array = root.getJSONArray("expenses")
+            require(array.length() <= 100_000) { "Preveč stroškov v varnostni kopiji." }
+            List(array.length()) { expenseFromJson(array.getJSONObject(it)) }
+        } else ExpenseRules.legacy(trips)
         validate(settings, trips, points, places, vehicles, attachments)
+        validateExpenses(trips, attachments, expenses)
 
         return BackupData(
             generatedAt = root.optLong("generatedAt", 0L),
@@ -87,7 +95,39 @@ object BackupCodec {
             trips = trips,
             points = points,
             attachments = attachments,
+            expenses = expenses,
         )
+    }
+
+    private fun expenseToJson(value: ExpenseEntity) = JSONObject()
+        .put("id", value.id).put("tripId", value.tripId).put("kind", value.kind)
+        .put("amountCents", value.amountCents).put("note", value.note).put("createdAt", value.createdAt)
+        .put("attachmentId", value.attachmentId ?: JSONObject.NULL)
+
+    private fun expenseFromJson(obj: JSONObject): ExpenseEntity {
+        val amount = java.math.BigDecimal(obj.get("amountCents").toString()).longValueExact()
+        require(amount in 1..Int.MAX_VALUE.toLong()) { "Neveljaven znesek stroška." }
+        return ExpenseEntity(obj.getString("id"), obj.getLong("tripId"), obj.getString("kind"), amount.toInt(),
+            obj.getString("note"), obj.getLong("createdAt"), if (obj.isNull("attachmentId")) null else obj.getLong("attachmentId"))
+    }
+
+    private fun validateExpenses(trips: List<TripEntity>, attachments: List<AttachmentEntity>, expenses: List<ExpenseEntity>) {
+        require(expenses.map { it.id }.toSet().size == expenses.size) { "Podvojeni stroški." }
+        val tripsById = trips.associateBy { it.id }
+        val files = attachments.associateBy { it.id }
+        val linked = expenses.mapNotNull { it.attachmentId }
+        require(linked.toSet().size == linked.size) { "Račun je povezan z več stroški." }
+        expenses.forEach {
+            ExpenseRules.validate(it)
+            require(it.tripId in tripsById) { "Strošek nima pripadajoče vožnje." }
+            require(it.attachmentId == null || files[it.attachmentId]?.tripId == it.tripId) { "Neveljavna povezava računa in stroška." }
+        }
+        val byTrip = expenses.groupBy { it.tripId }
+        trips.forEach { trip ->
+            val entries = byTrip[trip.id].orEmpty()
+            require(entries.filter { it.kind == ExpenseKinds.PARKING }.sumOf { it.amountCents.toLong() } == trip.parkingCents.toLong() &&
+                entries.filter { it.kind == ExpenseKinds.TOLL }.sumOf { it.amountCents.toLong() } == trip.tollsCents.toLong()) { "Seštevek stroškov se ne ujema z vožnjo." }
+        }
     }
 
     private fun validate(

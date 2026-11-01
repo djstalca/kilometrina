@@ -76,6 +76,7 @@ fun HomeScreen(
     onOpenTrips: () -> Unit,
     onConfirmRouteReview: (Long) -> Unit,
     onEditRouteReview: (Long) -> Unit,
+    onOpenExpenses: (Long) -> Unit = {},
 ) {
     val context = LocalContext.current
     var purpose by rememberSaveable { mutableStateOf("") }
@@ -185,6 +186,8 @@ fun HomeScreen(
             } else {
                 ActiveTripCard(
                     trip = activeTrip,
+                    expenseCount = uiState.expenses.count { it.tripId == activeTrip.id },
+                    onExpenses = { onOpenExpenses(activeTrip.id) },
                     diagnostics = uiState.trackingDiagnostics,
                     recoveryRequired = uiState.recoveryRequired,
                     recoveryState = startState,
@@ -395,6 +398,8 @@ private fun ReadyCard(
 @Composable
 private fun ActiveTripCard(
     trip: TripEntity,
+    expenseCount: Int,
+    onExpenses: () -> Unit,
     diagnostics: TrackingDiagnosticsState,
     recoveryRequired: Boolean,
     recoveryState: StartState,
@@ -467,13 +472,18 @@ private fun ActiveTripCard(
             ) {
                 Metric("Začetek", formatTime(trip.startTime), Modifier.weight(1f))
                 Metric("Čas", "$minutes min", Modifier.weight(1f))
-                Metric("Znesek", formatMoney(tripCompensation(trip)), Modifier.weight(1f))
+                Metric("Kilometrina", formatMoney(tripCompensation(trip)), Modifier.weight(1f))
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Odhod", style = MaterialTheme.typography.labelLarge)
                 Text(shortLocation(trip.startAddress), color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
             }
+
+            OutlinedButton(onClick = onExpenses, modifier = Modifier.fillMaxWidth()) {
+                Text(if (expenseCount == 0) "Dodaj strošek" else "Stroški ${formatMoney(tripAdditionalCosts(trip))} · $expenseCount postavk")
+            }
+            if (expenseCount > 0) Text("Skupaj ${formatMoney(tripTotalCost(trip))}", style = MaterialTheme.typography.titleMedium)
 
             if (recoveryRequired) {
                 Text(

@@ -27,6 +27,16 @@ class TripRepository(
     val trips: Flow<List<TripEntity>> = dao.observeTrips()
     val activeTrip: Flow<TripEntity?> = dao.observeActiveTrip()
     val attachments: Flow<List<AttachmentSummary>> = dao.observeAttachments()
+    val expenses: Flow<List<ExpenseEntity>> = dao.observeExpenses()
+    suspend fun getExportSnapshot(): ReportExportSnapshot = dao.getExportSnapshot()
+    suspend fun saveExpense(expense: ExpenseEntity) = dao.saveExpense(expense)
+    suspend fun deleteExpense(id: String) = dao.deleteExpense(id)
+    suspend fun addExpenseReceipt(id: String, tripId: Long, name: String, mime: String, bytes: ByteArray) {
+        require(bytes.isNotEmpty() && bytes.size <= 10 * 1024 * 1024) { "Račun je prazen ali večji od 10 MB." }
+        require(mime == "application/pdf" || mime.startsWith("image/")) { "Podprte so slike in PDF dokumenti." }
+        dao.attachExpenseReceipt(id, AttachmentEntity(tripId = tripId, displayName = name.trim().ifBlank { "Račun" }.take(180),
+            mimeType = mime.take(120), data = bytes))
+    }
 
     suspend fun getActiveTrip(): TripEntity? = dao.getActiveTrip()
     suspend fun getRoutePoints(tripId: Long): List<LocationPointEntity> = dao.getPointsForTrip(tripId)
@@ -95,7 +105,7 @@ class TripRepository(
         require(endTime > trip.startTime) { "Čas prihoda mora biti po času odhoda." }
         TripRules.requireValidTripNumbers(trip)
 
-        return dao.insertTrip(
+        return dao.insertManualWithExpenses(
             trip.copy(
                 id = 0,
                 startLat = 0.0,
@@ -201,7 +211,7 @@ class TripRepository(
         val automaticStops = automaticStopLabels(points, startAddress, endAddress)
         val gpsAssessment = assessGps(points)
 
-        dao.updateTrip(
+        dao.completeTrip(
             active.copy(
                 endTime = endTime,
                 startAddress = startAddress,
@@ -245,7 +255,7 @@ class TripRepository(
                     automaticStopLabels(points, startAddress, endAddress.orEmpty())
                 }
 
-                dao.updateTrip(
+                dao.updateCompletedDetails(
                     trip.copy(
                         startAddress = startAddress,
                         endAddress = endAddress,
@@ -261,7 +271,7 @@ class TripRepository(
         val endTime = trip.endTime ?: return
         if (endTime <= trip.startTime) return
         TripRules.requireValidTripNumbers(trip)
-        dao.updateTrip(
+        dao.updateCompletedDetails(
             trip.copy(
                 startAddress = trip.startAddress.trim().ifBlank { "Lokacija ni na voljo" },
                 endAddress = trip.endAddress?.trim()?.ifBlank { "Lokacija ni na voljo" },

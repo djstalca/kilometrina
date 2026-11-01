@@ -69,7 +69,8 @@ class AttachmentRecoveryTest {
                     entries[entry.name] = zip.readBytes()
                 }
             }
-            assertEquals(4, entries.size)
+            assertEquals(5, entries.size)
+            assertTrue(entries.containsKey("stroski-2026-10.csv"))
             assertEquals(2, entries.keys.count { it.startsWith("priloge/") })
             assertTrue(entries.values.any { it.contentEquals(original) })
             File(context.getExternalFilesDir(null), "attachment-recovery-result.txt").writeText(

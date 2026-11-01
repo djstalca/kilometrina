@@ -12,6 +12,103 @@ import java.io.OutputStream
 
 @Dao
 interface TripDao {
+    @Transaction
+    suspend fun getExportSnapshot(): ReportExportSnapshot =
+        ReportExportSnapshot(getAllTrips(), getAttachmentSummaries(), getExpenses())
+    @Query("SELECT * FROM expenses ORDER BY createdAt, id")
+    fun observeExpenses(): Flow<List<ExpenseEntity>>
+
+    @Query("SELECT * FROM expenses ORDER BY createdAt, id")
+    suspend fun getExpenses(): List<ExpenseEntity>
+
+    @Query("SELECT * FROM expenses WHERE tripId = :tripId ORDER BY createdAt, id")
+    suspend fun getTripExpenses(tripId: Long): List<ExpenseEntity>
+
+    @Query("SELECT * FROM expenses WHERE id = :id")
+    suspend fun getExpense(id: String): ExpenseEntity?
+
+    @Query("SELECT * FROM trips WHERE id = :id")
+    suspend fun getTrip(id: Long): TripEntity?
+
+    @Insert
+    suspend fun insertExpenses(expenses: List<ExpenseEntity>)
+
+    @Update
+    suspend fun updateExpense(expense: ExpenseEntity)
+
+    @Query("DELETE FROM expenses WHERE id = :id")
+    suspend fun removeExpense(id: String)
+
+    @Query("DELETE FROM expenses")
+    suspend fun deleteAllExpenses()
+
+    @Query("UPDATE trips SET parkingCents = :parking, tollsCents = :tolls WHERE id = :tripId")
+    suspend fun setExpenseTotals(tripId: Long, parking: Int, tolls: Int)
+
+    @Transaction
+    suspend fun recalculateExpenses(tripId: Long) {
+        val expenses = getTripExpenses(tripId)
+        fun total(kind: String): Int = expenses.filter { it.kind == kind }.sumOf { it.amountCents.toLong() }.also {
+            require(it <= Int.MAX_VALUE) { "Skupni stroški so previsoki." }
+        }.toInt()
+        setExpenseTotals(tripId, total(ExpenseKinds.PARKING), total(ExpenseKinds.TOLL))
+    }
+
+    @Transaction
+    suspend fun seedExpenses(tripId: Long) {
+        val trip = requireNotNull(getTrip(tripId)) { "Vožnja ne obstaja več." }
+        val present = getTripExpenses(tripId).map { it.kind }.toSet()
+        val missing = ExpenseRules.legacy(listOf(trip)).filter { it.kind !in present }
+        if (missing.isNotEmpty()) insertExpenses(missing)
+    }
+
+    @Transaction
+    suspend fun saveExpense(expense: ExpenseEntity) {
+        ExpenseRules.validate(expense)
+        seedExpenses(expense.tripId)
+        val old = getExpense(expense.id)
+        require(old == null || old.tripId == expense.tripId) { "Strošek pripada drugi vožnji." }
+        val safe = expense.copy(attachmentId = old?.attachmentId, createdAt = old?.createdAt ?: expense.createdAt)
+        if (old == null) insertExpenses(listOf(safe)) else updateExpense(safe)
+        recalculateExpenses(expense.tripId)
+    }
+
+    @Transaction
+    suspend fun deleteExpense(id: String) {
+        val expense = getExpense(id) ?: return
+        removeExpense(id)
+        recalculateExpenses(expense.tripId)
+        // Receipts are retained with the trip; removing a cost never destroys a file.
+    }
+
+    @Transaction
+    suspend fun attachExpenseReceipt(id: String, attachment: AttachmentEntity) {
+        val expense = requireNotNull(getExpense(id)) { "Strošek ne obstaja več." }
+        require(expense.tripId == attachment.tripId) { "Račun pripada drugi vožnji." }
+        updateExpense(expense.copy(attachmentId = insertAttachment(attachment)))
+    }
+
+    @Transaction
+    suspend fun updateCompletedDetails(trip: TripEntity) {
+        val latest = requireNotNull(getTrip(trip.id)) { "Vožnja ne obstaja več." }
+        require(latest.endTime != null)
+        updateTrip(trip.copy(parkingCents = latest.parkingCents, tollsCents = latest.tollsCents))
+    }
+
+    @Transaction
+    suspend fun completeTrip(completed: TripEntity) {
+        val latest = getTrip(completed.id) ?: return
+        if (latest.endTime != null) return
+        updateTrip(completed.copy(distanceMeters = latest.distanceMeters,
+            parkingCents = latest.parkingCents, tollsCents = latest.tollsCents))
+    }
+
+    @Transaction
+    suspend fun insertManualWithExpenses(trip: TripEntity): Long {
+        val id = insertTrip(trip)
+        seedExpenses(id)
+        return id
+    }
     @Insert
     suspend fun insertTrip(trip: TripEntity): Long
 

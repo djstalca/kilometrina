@@ -331,7 +331,7 @@ class TripRepository(
     private suspend fun reverseGeocodeStop(lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
         runCatching {
             @Suppress("DEPRECATION")
-            Geocoder(context, Locale.getDefault())
+            Geocoder(context, Locale.forLanguageTag("sl-SI"))
                 .getFromLocation(lat, lon, 1)
                 ?.firstOrNull()
                 ?.let { address ->
@@ -359,7 +359,7 @@ class TripRepository(
     private suspend fun reverseGeocode(lat: Double, lon: Double): String = withContext(Dispatchers.IO) {
         runCatching {
             @Suppress("DEPRECATION")
-            Geocoder(context, Locale.getDefault())
+            Geocoder(context, Locale.forLanguageTag("sl-SI"))
                 .getFromLocation(lat, lon, 1)
                 ?.firstOrNull()
                 ?.let { address ->

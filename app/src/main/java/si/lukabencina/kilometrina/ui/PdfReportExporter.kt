@@ -190,7 +190,8 @@ object PdfReportExporter {
         )
 
         val title = trip.description.trim().ifBlank { trip.purpose }
-        val route = formatTripRoute(trip)
+        val costsOnly = trip.distanceMeters == 0.0 && (trip.parkingCents > 0 || trip.tollsCents > 0)
+        val route = if (costsOnly) "Samo stroški" else formatTripRoute(trip)
         val vehicle = listOf(trip.vehicleName, trip.registrationPlate)
             .filter(String::isNotBlank)
             .joinToString(" • ")
@@ -211,7 +212,7 @@ object PdfReportExporter {
         canvas.drawText(fitText(vehicleMeta, detailsWidth, vehiclePaint), detailsX, y + 40f, vehiclePaint)
         canvas.drawText(fitText(costs, detailsWidth, costPaint), detailsX, y + 53f, costPaint)
 
-        canvas.drawText(number(trip.distanceMeters / 1000.0, 1), kmRight, y + 31f, numberPaint)
+        canvas.drawText(if (costsOnly) "—" else number(trip.distanceMeters / 1000.0, 1), kmRight, y + 31f, numberPaint)
         canvas.drawText(money(tripTotalCost(trip)), totalRight, y + 31f, numberPaint)
 
         val line = Paint().apply {
@@ -222,13 +223,18 @@ object PdfReportExporter {
     }
 
     private fun drawSummary(canvas: Canvas, y: Float, summary: ReportSummary) {
+        val background = Paint().apply { color = Color.rgb(239, 242, 246) }
+        canvas.drawRoundRect(MARGIN, y - 8f, PAGE_WIDTH - MARGIN, y + 69f, 4f, 4f, background)
         val labelPaint = textPaint(7.2f, color = Color.rgb(93, 100, 111))
         val valuePaint = textPaint(9.5f, bold = true, color = Color.rgb(29, 34, 42)).apply {
             textAlign = Paint.Align.RIGHT
         }
         val totalLabelPaint = textPaint(7.2f, bold = true, color = Color.rgb(49, 56, 66))
+        val totalValuePaint = textPaint(12f, bold = true, color = Color.rgb(24, 29, 36)).apply {
+            textAlign = Paint.Align.RIGHT
+        }
         val titlePaint = textPaint(9.4f, bold = true, color = Color.rgb(31, 36, 44))
-        canvas.drawText("Povzetek", MARGIN, y, titlePaint)
+        canvas.drawText("Povzetek", MARGIN + 8f, y + 4f, titlePaint)
 
         val items = listOf(
             "Vožnje" to summary.tripCount.toString(),
@@ -245,8 +251,9 @@ object PdfReportExporter {
             val x = MARGIN + column * boxWidth
             val rowY = y + 18f + row * 31f
             val label = if (item.first == "SKUPAJ") totalLabelPaint else labelPaint
-            canvas.drawText(item.first, x, rowY, label)
-            canvas.drawText(item.second, x + boxWidth - 8f, rowY + 13f, valuePaint)
+            canvas.drawText(item.first, x + 8f, rowY, label)
+            canvas.drawText(item.second, x + boxWidth - 8f, rowY + 13f,
+                if (item.first == "SKUPAJ") totalValuePaint else valuePaint)
         }
     }
 
